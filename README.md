@@ -3,11 +3,7 @@ This repository is intended store the data caode for the RF ZSL Project
 
 ## data
 
-This folder stores the sample data for testing and experimentation.
-
-These file are written as 16-bit signed integers in little endian format.
-
-The data is stored in an interleaved real, imaginary, real, imaginary, etc...
+This folder stores the sample data for testing and experimentation.  These file are written as 16-bit signed integers in little endian format.  The data is stored in an interleaved real, imaginary, real, imaginary, etc...
 
 | File Name      | Description |
 |     :----:     | :---        |
@@ -29,4 +25,32 @@ import numpy as np
 data = np.fromfile("rf_zsl/data/rand_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 ```
 
-C++: The methodology is still being worked
+C++: uses the iostream library.
+
+```
+#include <vector>
+#include <fstream>
+#include <iostream>
+
+.
+.
+.
+
+std::vector<int16_t> buffer;
+
+input_file.open("rf_zsl/data/rand_test_10M_100m_0000.bin", std::ios::binary);
+if (!input_file.is_open())
+    return 0;
+
+input_file.seekg(0, std::ios::end);
+size_t filesize = input_file.tellg();
+input_file.seekg(0, std::ios::beg);
+
+
+auto t4 = filesize / sizeof(int16_t) + (filesize % sizeof(int16_t) ? 1U : 0U);
+
+buffer.resize(filesize / sizeof(int16_t) + (filesize % sizeof(int16_t) ? 1U : 0U));
+
+input_file.read((char*)buffer.data(), filesize);
+```
+
