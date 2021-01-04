@@ -18,7 +18,7 @@ The data is stored in an interleaved real, imaginary, real, imaginary, etc...
 
 ## Reading the Data
 
-The data can be read in using Python or C++
+The data can be read in using Python or C++ or any other library that can open and read binary files.
 
 Python: the data can be read in by any number of packages.  The numpy package provides a simple one line method to bring in the data and store as a 32-bit float.
 
