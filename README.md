@@ -22,9 +22,9 @@ The data can be read in using Python or C++
 
 - Python: the data can be read in by any number of packages.  The numpy package provides a simple one line method to bring in the data and store as a 32-bit float.
 
-'''
+```
 import numpy as np
 data = np.fromfile("rf_zsl/data/rand_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
-'''
+```
 
 - C++: The methodology is still being worked
