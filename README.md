@@ -46,9 +46,6 @@ input_file.seekg(0, std::ios::end);
 size_t filesize = input_file.tellg();
 input_file.seekg(0, std::ios::beg);
 
-
-auto t4 = filesize / sizeof(int16_t) + (filesize % sizeof(int16_t) ? 1U : 0U);
-
 buffer.resize(filesize / sizeof(int16_t) + (filesize % sizeof(int16_t) ? 1U : 0U));
 
 input_file.read((char*)buffer.data(), filesize);
