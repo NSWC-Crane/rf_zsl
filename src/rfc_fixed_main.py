@@ -28,13 +28,14 @@ import numpy as np
 ###torch.manual_seed(42)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
+torch.set_printoptions(precision=10)
 
 max_epochs = 12000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-input_size = 256
+input_size = 8
 feature_size = 1
-decoder_int1 = 8
+decoder_int1 = 32
 
 read_data = True
 
@@ -47,10 +48,10 @@ class Encoder(nn.Module):
         self.hidden_layer_2 = nn.Linear(128, 128, bias=False)
         #self.hidden_layer_3 = nn.Linear(32, 128, bias=False)
         self.output_layer = nn.Linear(16, feature_size, bias=False)
-        self.prelu = nn.PReLU(1, 0.25)
-        self.silu = nn.SiLU()
-        self.elu = nn.ELU()
-        self.tanshrink = nn.Tanhshrink()
+        #self.prelu = nn.PReLU(1, 0.25)
+        #self.silu = nn.SiLU()
+        #self.elu = nn.ELU()
+        #self.tanshrink = nn.Tanhshrink()
 
     def forward(self, activation):
         activation = self.input_layer(activation)
@@ -79,7 +80,7 @@ class Decoder(nn.Module):
         self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
         self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
         self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
-        self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
+        self.output_layer = nn.Linear(feature_size, output_size, bias=False)
         #self.prelu = nn.PReLU(1, 0.25)
         #self.multp = nn.Parameter(torch.tensor([[2048.0]]))
         #self.silu = nn.SiLU()
@@ -87,10 +88,11 @@ class Decoder(nn.Module):
         #self.tanshrink = nn.Tanhshrink()
         #self.tanh = nn.Tanh()
         #self.relu = nn.ReLU()
+        self.alpha = nn.Parameter(torch.tensor(10.0, requires_grad=True))
 
     def forward(self, activation):
         #activation = self.prelu(activation)
-        activation = self.input_layer(activation)
+        activation1 = self.input_layer(activation)
         #activation = self.elu(activation)
         #activation = self.prelu(activation)
         #activation = self.relu(activation)
@@ -131,14 +133,21 @@ for parameter in model.decoder.parameters():
 
 #model.decoder.prelu.weight.requires_grad = False
 
+#introduce a couple of fixed point parameters
+scale = 20     # this is the scale factor to divide the final number by
+fp_range = 8      # this the min/max number (-factor <= x < factor-1) this should be
+
 # use something like this to manually set the weights.  use the no_grad() to prevent tracking of gradient changes
 with torch.no_grad():
-    rnd_range = 1/128
+    rnd_range = 1/fp_range
     mr = np.random.default_rng(10)
 
     # normal random numbers
-    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, [decoder_int1, feature_size]).astype(np.float32))).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, [input_size, decoder_int1]).astype(np.float32))).to(device)
+    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(-fp_range, fp_range, [decoder_int1, feature_size]).astype(np.float32)/(fp_range*scale))).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-fp_range, fp_range, [input_size, feature_size]).astype(np.float32)/(fp_range*scale))).to(device)
+    #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, [decoder_int1, feature_size]).astype(np.float32))).to(device)
+    #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, [input_size, decoder_int1]).astype(np.float32))).to(device)
+
 
     # make a deep copy of the weights to make sure they don't change
     ew1 = copy.deepcopy(model.encoder.input_layer.weight)
@@ -188,7 +197,9 @@ if __name__ == '__main__':
     model.train()
 
     m = 128
-    lr_shift = 1.0
+    lr_shift = 20.0
+
+    epoch_inc = 25
 
     for epoch in range(max_epochs):
         #model.train()
@@ -202,16 +213,17 @@ if __name__ == '__main__':
         loss += train_loss.item()
 
         # clamp the weights to a fixed point value with 5 bits [-16,16]
-        with torch.no_grad():
-            t1 = model.decoder.input_layer.weight.data
-            t1 = torch.clamp_min(torch.clamp_max(m*t1, 32), -32)
-            t1 = torch.floor(t1+0.5)/m
-            model.decoder.input_layer.weight.data = t1
+        if(epoch % epoch_inc == 0):
+            with torch.no_grad():
+                t1 = model.decoder.input_layer.weight.data
+                t1 = torch.clamp_min(torch.clamp_max(t1 * fp_range * scale, fp_range-1), -fp_range)
+                t1 = torch.floor(t1+0.5)/(fp_range * scale)
+                model.decoder.input_layer.weight.data = t1
 
-            t2 = model.decoder.output_layer.weight.data
-            t2 = torch.clamp_min(torch.clamp_max(m*t2, 32), -32)
-            t2 = torch.floor(t2+0.5)/m
-            model.decoder.output_layer.weight.data = t2
+                t2 = model.decoder.output_layer.weight.data
+                t2 = torch.clamp_min(torch.clamp_max(t2 * fp_range * scale, fp_range-1), -fp_range)
+                t2 = torch.floor(t2+0.5)/(fp_range * scale)
+                model.decoder.output_layer.weight.data = t2
 
         print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
 
@@ -228,6 +240,7 @@ if __name__ == '__main__':
         #scheduler.step(math.floor(loss))
         #scheduler.step()
 
+    model.eval()
     with torch.no_grad():
         #outputs = model(X)
         #outputs = torch.floor(outputs + 0.5)
@@ -237,10 +250,10 @@ if __name__ == '__main__':
         ew2 = copy.deepcopy(model.encoder.input_layer.weight)
         dw1b = copy.deepcopy(model.decoder.input_layer.weight)
         dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-        d1a = dw1b*128
-        d2a = dw2b*128
-        d1 = torch.floor(d1a+0.5)/128
-        d2 = torch.floor(d2a+0.5)/128
+        d1a = torch.clamp_min(torch.clamp_max(dw1b * fp_range * scale, fp_range-1), -fp_range)
+        d2a = torch.clamp_min(torch.clamp_max(dw2b * fp_range * scale, fp_range-1), -fp_range)
+        d1 = torch.floor(d1a+0.5)/(fp_range * scale)
+        d2 = torch.floor(d2a+0.5)/(fp_range * scale)
 
         #print("\nOriginal Input:\n", X)
         #print("\nOutput:\n",torch.floor(outputs + 0.5))
