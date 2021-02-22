@@ -158,7 +158,7 @@ with torch.no_grad():
 
     # normal random numbers
     model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, input_layer_shape).astype(np.float32)/(scale))).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(fp_min, fp_max, output_layer_shape).astype(np.float32)/(scale))).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, output_layer_shape).astype(np.float32)/(scale))).to(device)
     #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, input_layer_shape).astype(np.float32))).to(device)
     #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, output_layer_shape).astype(np.float32))).to(device)
 
