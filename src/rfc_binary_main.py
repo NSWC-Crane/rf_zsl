@@ -32,7 +32,7 @@ torch.backends.cudnn.benchmark = False
 max_epochs = 12000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-input_size = 256
+input_size = 8
 feature_size = 1
 decoder_int1 = 8
 
@@ -136,9 +136,16 @@ with torch.no_grad():
     #rnd_range = 1/128
     mr = np.random.default_rng(10)
 
+    input_layer_shape = model.decoder.input_layer.weight.data.shape
+    output_layer_shape = model.decoder.output_layer.weight.data.shape
+
     # random values of -1/1
-    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, [decoder_int1, feature_size]) > 0.5).astype(np.float32)-1)).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, [input_size, decoder_int1]) > 0.5).astype(np.float32)-1)).to(device)
+    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, input_layer_shape) > 0.5).astype(np.float32)-1)).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, output_layer_shape) > 0.5).astype(np.float32)-1)).to(device)
+
+    # random values of 0/1
+    #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy((mr.uniform(0, 1.0, input_layer_shape) > 0.5).astype(np.float32))).to(device)
+    #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy((mr.uniform(0, 1.0, output_layer_shape) > 0.5).astype(np.float32))).to(device)
 
     # make a deep copy of the weights to make sure they don't change
     ew1 = copy.deepcopy(model.encoder.input_layer.weight)
@@ -189,6 +196,8 @@ if __name__ == '__main__':
 
     lr_shift = 1.0
 
+    epoch_inc = 100
+
     for epoch in range(max_epochs):
         model.train()
         loss = 0
@@ -201,20 +210,22 @@ if __name__ == '__main__':
         optimizer.step()
         loss += train_loss.item()
 
-        with torch.no_grad():
-            t1 = model.decoder.input_layer.weight.data
-            t1 = 2*(t1 > 0).type(torch.float32) - 1
-            #t1 = torch.floor(t1*m + 0.5)/m
-            #t1 = torch.clamp_min(torch.clamp_max(m*t1, 16), -16)
-            #t1 = torch.floor(t1+0.5)/m
-            model.decoder.input_layer.weight.data = t1
+        # clamp the weights to a fixed point value
+        if(epoch % epoch_inc == 0):
+            with torch.no_grad():
+                t1 = model.decoder.input_layer.weight.data
+                t2 = model.decoder.output_layer.weight.data
 
-            t2 = model.decoder.output_layer.weight.data
-            t2 = 2*(t2 > 0).type(torch.float32) - 1
-            #t2 = torch.floor(t2*m + 0.5)/m
-            #t2 = torch.clamp_min(torch.clamp_max(m*t2, 16), -16)
-            #t2 = torch.floor(t2+0.5)/m
-            model.decoder.output_layer.weight.data = t2
+                # weights in the range -1/1
+                t1a = 2*(t1 > 0).type(torch.float32) - 1
+                t2a = 2*(t2 > 0).type(torch.float32) - 1
+
+                # weights in the range 0/1
+                #t1a = (t1 > 0.5).type(torch.float32)
+                #t2a = (t2 > 0.5).type(torch.float32)
+
+                model.decoder.input_layer.weight.data = t1a
+                model.decoder.output_layer.weight.data = t2a
 
 
         print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
@@ -245,10 +256,12 @@ if __name__ == '__main__':
         ew2 = copy.deepcopy(model.encoder.input_layer.weight)
         dw1b = copy.deepcopy(model.decoder.input_layer.weight)
         dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-        d1a = dw1b*128
-        d2a = dw2b*128
-        d1 = torch.floor(d1a+0.5)/128
-        d2 = torch.floor(d2a+0.5)/128
+        # -1/1 weights
+        d1 = 2*(dw1b > 0).type(torch.float32) - 1
+        d2 = 2*(dw2b > 0).type(torch.float32) - 1
+        # 0/1 weights
+        #d1 = (dw1b > 0.5).type(torch.float32)
+        #d2 = (dw2b > 0.5).type(torch.float32)
 
         bp = 5
         #print("\nOriginal Input:\n", X)
