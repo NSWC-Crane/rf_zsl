@@ -1,5 +1,7 @@
 explanation of the graphs:
 
+the accuracy is the loss ~approximitely 2.x million
+
 32000 graph increases at increments of 100
 9000 increases at increments of 10
 2500 = increments of 3
