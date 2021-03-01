@@ -20,9 +20,9 @@ torch.set_printoptions(precision=10)
 max_epochs = 20000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 1
-feature_size = 1
-decoder_int1 = 3
+io_size = 32
+feature_size = 21
+decoder_int1 = 21
 
 read_data = False
 
@@ -31,8 +31,8 @@ class Decoder(nn.Module):
     def __init__(self, output_size, feature_size):
         super().__init__()
         self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
-        self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
-        self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
+        #self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
+        #self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
         self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
         #self.prelu = nn.PReLU(1, 0.25)
         #self.multp = nn.Parameter(torch.tensor([[2048.0]]))
@@ -41,11 +41,11 @@ class Decoder(nn.Module):
         #self.tanshrink = nn.Tanhshrink()
         #self.tanh = nn.Tanh()
         #self.relu = nn.ReLU()
-        self.alpha = nn.Parameter(torch.tensor(10.0, requires_grad=True))
+        #self.alpha = nn.Parameter(torch.tensor(10.0, requires_grad=True))
 
     def forward(self, activation):
         #activation = self.prelu(activation)
-        activation = self.input_layer(activation)
+        #activation = self.input_layer(activation)
         #activation = self.elu(activation)
         #activation = self.prelu(activation)
         #activation = self.relu(activation)
@@ -108,10 +108,13 @@ with torch.no_grad():
     output_layer_shape = model.decoder.output_layer.weight.data.shape
 
     # normal random numbers
-    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, input_layer_shape).astype(np.float32)/(scale))).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, output_layer_shape).astype(np.float32)/(scale))).to(device)
+    #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, input_layer_shape).astype(np.float32)/(scale))).to(device)
+    #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, output_layer_shape).astype(np.float32)/(scale))).to(device)
     #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, input_layer_shape).astype(np.float32))).to(device)
     #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, output_layer_shape).astype(np.float32))).to(device)
+    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(input_layer_shape).astype(np.float32))).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(output_layer_shape).astype(np.float32))).to(device)
+    #np.ones((1, 1, 1, feature_size)
 
     # make a deep copy of the weights to make sure they don't change
     dw1a = copy.deepcopy(model.decoder.input_layer.weight)
@@ -120,7 +123,7 @@ with torch.no_grad():
 
 # this is setup as a static learning rate.  we may want to look at variable lr based on some performance numbers
 #optimizer = optim.Adam(model.parameters(), lr=1e-3)
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=5e-3)
+optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3)
 #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=1e-1, div_factor=100, steps_per_epoch=1, epochs=max_epochs, verbose=True)
 #scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5000, threshold=0.1, threshold_mode='rel', cooldown=20, min_lr=1e-10, eps=1e-08, verbose=True)
 criterion = nn.MSELoss()
@@ -159,6 +162,7 @@ if __name__ == '__main__':
 
     # input into the decoder
     F = torch.from_numpy(np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
+    F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
     X = torch.from_numpy(x).to(device)
@@ -170,7 +174,7 @@ if __name__ == '__main__':
     m = 128
     lr_shift = 10.0
 
-    epoch_inc = 125
+    epoch_inc = 2000
 
     for epoch in range(max_epochs):
         #model.train()
@@ -222,10 +226,10 @@ if __name__ == '__main__':
 
         dw1b = copy.deepcopy(model.decoder.input_layer.weight)
         dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-        d1a = torch.clamp_min(torch.clamp_max(dw1b * scale, fp_max), fp_min)
-        d2a = torch.clamp_min(torch.clamp_max(dw2b * scale, fp_max), fp_min)
-        d1 = torch.floor(d1a+0.5)/(scale)
-        d2 = torch.floor(d2a+0.5)/(scale)
+        dw1b_q = torch.clamp_min(torch.clamp_max(dw1b * scale, fp_max), fp_min)
+        dw2b_q = torch.clamp_min(torch.clamp_max(dw2b * scale, fp_max), fp_min)
+        d1 = torch.floor(dw1b_q + 0.5)/(scale)
+        d2 = torch.floor(dw2b_q + 0.5)/(scale)
 
         #print("\nOriginal Input:\n", X)
         #print("\nOutput:\n",torch.floor(outputs + 0.5))
