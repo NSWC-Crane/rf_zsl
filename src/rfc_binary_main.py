@@ -7,6 +7,8 @@ import torchvision
 import copy
 import math
 import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+import datetime
 
 '''
     def __init__(self, **kwargs):
@@ -29,12 +31,12 @@ import numpy as np
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-max_epochs = 12000
+max_epochs = 24000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
 input_size = 256
 feature_size = 1
-decoder_int1 = 8
+decoder_int1 = 128
 
 read_data = True
 
@@ -81,7 +83,7 @@ class Decoder(nn.Module):
         self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
         self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
         #self.prelu = nn.PReLU(1, 0.25)
-        #self.multp = nn.Parameter(torch.tensor([[2048.0]]))
+        self.multp = nn.Parameter(torch.tensor([[2048.0]]))
         #self.silu = nn.SiLU()
         #self.elu = nn.ELU()
         #self.tanshrink = nn.Tanhshrink()
@@ -89,12 +91,13 @@ class Decoder(nn.Module):
         #self.relu = nn.ReLU()
 
     def forward(self, activation):
+        # self.round_weights()
         #activation = self.prelu(activation)
         activation = self.input_layer(activation)
         #activation = self.elu(activation)
         #activation = self.prelu(activation)
         #activation = self.relu(activation)
-        #activation = activation*self.multp.expand_as(activation)
+        activation = activation*self.multp.expand_as(activation)
         #activation = self.hidden_layer_1(activation)
         #activation = self.hidden_layer_2(activation)
         #activation = self.silu(activation)
@@ -105,6 +108,22 @@ class Decoder(nn.Module):
         #activation = self.elu(activation)
         #activation = activation
         return activation
+
+    def round_weights(self):
+        with torch.no_grad():
+            t1 = self.input_layer.weight.data
+            t1 = 2*(t1 > 0).type(torch.float32) - 1
+            #t1 = torch.floor(t1*m + 0.5)/m
+            t1 = torch.clamp_min(torch.clamp_max(self.multp*t1, 32), -32)
+            t1 = torch.floor(t1+0.5)/self.multp
+            self.input_layer.weight.data = t1
+
+            t2 = self.output_layer.weight.data
+            t2 = 2*(t2 > 0).type(torch.float32) - 1
+            #t2 = torch.floor(t2*m + 0.5)/m
+            t2 = torch.clamp_min(torch.clamp_max(self.multp*t2, 32), -32)
+            t2 = torch.floor(t2+0.5)/self.multp
+            self.output_layer.weight.data = t2
 
 # use the encoder and decoder classes to build the autoencoder
 class AE(nn.Module):
@@ -175,7 +194,7 @@ if __name__ == '__main__':
     rng = np.random.default_rng()
 
     if(read_data == True):
-        x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+        x = np.fromfile("../data/lfm_test_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
         x = x[np.s_[idx:idx+input_size]]
     else:
         x = rng.integers(-2048, 2048, size=(1, 1, 1, input_size), dtype=np.int16, endpoint=False).astype(np.float32)
@@ -187,7 +206,12 @@ if __name__ == '__main__':
     # model must be set to train mode for QAT logic to work
     model.train()
 
+    m = 128
     lr_shift = 1.0
+
+    tag = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Writer will output to ./runs/ directory by default
+    writer = SummaryWriter(f'../runs/{tag}')
 
     for epoch in range(max_epochs):
         model.train()
@@ -201,22 +225,24 @@ if __name__ == '__main__':
         optimizer.step()
         loss += train_loss.item()
 
-        with torch.no_grad():
-            t1 = model.decoder.input_layer.weight.data
-            t1 = 2*(t1 > 0).type(torch.float32) - 1
-            #t1 = torch.floor(t1*m + 0.5)/m
-            #t1 = torch.clamp_min(torch.clamp_max(m*t1, 16), -16)
-            #t1 = torch.floor(t1+0.5)/m
-            model.decoder.input_layer.weight.data = t1
+        if (epoch+1) % 100 == 0:
+            model.decoder.round_weights()
+            # with torch.no_grad():
+            #     t1 = model.decoder.input_layer.weight.data
+            #     t1 = 2*(t1 > 0).type(torch.float32) - 1
+            #     #t1 = torch.floor(t1*m + 0.5)/m
+            #     t1 = torch.clamp_min(torch.clamp_max(m*t1, 32), -32)
+            #     t1 = torch.floor(t1+0.5)/m
+            #     model.decoder.input_layer.weight.data = t1
+            #
+            #     t2 = model.decoder.output_layer.weight.data
+            #     t2 = 2*(t2 > 0).type(torch.float32) - 1
+            #     #t2 = torch.floor(t2*m + 0.5)/m
+            #     t2 = torch.clamp_min(torch.clamp_max(m*t2, 32), -32)
+            #     t2 = torch.floor(t2+0.5)/m
+            #     model.decoder.output_layer.weight.data = t2
 
-            t2 = model.decoder.output_layer.weight.data
-            t2 = 2*(t2 > 0).type(torch.float32) - 1
-            #t2 = torch.floor(t2*m + 0.5)/m
-            #t2 = torch.clamp_min(torch.clamp_max(m*t2, 16), -16)
-            #t2 = torch.floor(t2+0.5)/m
-            model.decoder.output_layer.weight.data = t2
-
-
+        writer.add_scalar("Loss/train", loss, epoch)
         print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
 
         if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
@@ -236,11 +262,16 @@ if __name__ == '__main__':
         #scheduler.step(math.floor(loss))
         #scheduler.step()
 
+    model.decoder.round_weights()
+
     with torch.no_grad():
         #outputs = model(X)
         #outputs = torch.floor(outputs + 0.5)
         loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
         print("\nloss = {:.6f}".format(loss.item()))
+        outputs = model(X)
+        loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+        print("\nloss3 = {:.6f}".format(loss.item()))
 
         ew2 = copy.deepcopy(model.encoder.input_layer.weight)
         dw1b = copy.deepcopy(model.decoder.input_layer.weight)
@@ -263,5 +294,9 @@ if __name__ == '__main__':
         Y2 = torch.floor(model.decoder(f) + 0.5)
         loss2 = torch.sum(torch.abs(Y - X))
         print("loss2 = {:.6f}".format(loss2.item()))
+
+    torch.save(model, f'../runs/{tag}/saved_model.pth')
+    writer.add_graph(model, X)
+    writer.close()
 
     bp = 9
