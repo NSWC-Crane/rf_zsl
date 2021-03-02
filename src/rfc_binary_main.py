@@ -36,7 +36,7 @@ max_epochs = 24000
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
 input_size = 256
 feature_size = 1
-decoder_int1 = 128
+decoder_int1 = 64
 
 read_data = True
 
@@ -79,11 +79,11 @@ class Decoder(nn.Module):
     def __init__(self, output_size, feature_size):
         super().__init__()
         self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
-        self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
+        self.hidden_layer_1 = nn.Linear(decoder_int1, 128, bias=False)
         self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
-        self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
+        self.output_layer = nn.Linear(128, output_size, bias=False)
         #self.prelu = nn.PReLU(1, 0.25)
-        self.multp = nn.Parameter(torch.tensor([[2048.0]]))
+        # self.multp = nn.Parameter(torch.tensor([[128.0]]))
         #self.silu = nn.SiLU()
         #self.elu = nn.ELU()
         #self.tanshrink = nn.Tanhshrink()
@@ -97,8 +97,8 @@ class Decoder(nn.Module):
         #activation = self.elu(activation)
         #activation = self.prelu(activation)
         #activation = self.relu(activation)
-        activation = activation*self.multp.expand_as(activation)
-        #activation = self.hidden_layer_1(activation)
+        # activation = activation*self.multp.expand_as(activation)
+        activation = self.hidden_layer_1(activation)
         #activation = self.hidden_layer_2(activation)
         #activation = self.silu(activation)
         activation = self.output_layer(activation)
@@ -114,15 +114,17 @@ class Decoder(nn.Module):
             t1 = self.input_layer.weight.data
             t1 = 2*(t1 > 0).type(torch.float32) - 1
             #t1 = torch.floor(t1*m + 0.5)/m
-            t1 = torch.clamp_min(torch.clamp_max(self.multp*t1, 32), -32)
-            t1 = torch.floor(t1+0.5)/self.multp
+            # t1 = torch.clamp_min(torch.clamp_max(self.multp*t1, 32), -32)
+            # t1 = torch.floor(t1+0.5)/self.multp
+            t1 = torch.floor(t1/128)
             self.input_layer.weight.data = t1
 
             t2 = self.output_layer.weight.data
             t2 = 2*(t2 > 0).type(torch.float32) - 1
             #t2 = torch.floor(t2*m + 0.5)/m
-            t2 = torch.clamp_min(torch.clamp_max(self.multp*t2, 32), -32)
-            t2 = torch.floor(t2+0.5)/self.multp
+            # t2 = torch.clamp_min(torch.clamp_max(self.multp*t2, 32), -32)
+            # t2 = torch.floor(t2+0.5)/self.multp
+            t2 = torch.floor(t2 / 128)
             self.output_layer.weight.data = t2
 
 # use the encoder and decoder classes to build the autoencoder
@@ -157,7 +159,8 @@ with torch.no_grad():
 
     # random values of -1/1
     model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, [decoder_int1, feature_size]) > 0.5).astype(np.float32)-1)).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, [input_size, decoder_int1]) > 0.5).astype(np.float32)-1)).to(device)
+    model.decoder.hidden_layer_1.weight.data = nn.Parameter(torch.from_numpy(2 * (mr.uniform(0, 1.0, [128, decoder_int1]) > 0.5).astype(np.float32) - 1)).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(2*(mr.uniform(0, 1.0, [input_size, 128]) > 0.5).astype(np.float32)-1)).to(device)
 
     # make a deep copy of the weights to make sure they don't change
     ew1 = copy.deepcopy(model.encoder.input_layer.weight)
@@ -194,7 +197,7 @@ if __name__ == '__main__':
     rng = np.random.default_rng()
 
     if(read_data == True):
-        x = np.fromfile("../data/lfm_test_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+        x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
         x = x[np.s_[idx:idx+input_size]]
     else:
         x = rng.integers(-2048, 2048, size=(1, 1, 1, input_size), dtype=np.int16, endpoint=False).astype(np.float32)
@@ -208,10 +211,12 @@ if __name__ == '__main__':
 
     m = 128
     lr_shift = 1.0
+    update_weights = 500
 
     tag = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # Writer will output to ./runs/ directory by default
     writer = SummaryWriter(f'../runs/{tag}')
+    # writer.add_text('Binary Weights', '-1/1 weights updated every 100 epochs')
 
     for epoch in range(max_epochs):
         model.train()
@@ -225,7 +230,7 @@ if __name__ == '__main__':
         optimizer.step()
         loss += train_loss.item()
 
-        if (epoch+1) % 100 == 0:
+        if (epoch % update_weights) == 0:
             model.decoder.round_weights()
             # with torch.no_grad():
             #     t1 = model.decoder.input_layer.weight.data
@@ -296,6 +301,9 @@ if __name__ == '__main__':
         print("loss2 = {:.6f}".format(loss2.item()))
 
     torch.save(model, f'../runs/{tag}/saved_model.pth')
+    writer.add_hparams({'epochs': max_epochs, 'update_weights': update_weights, 'lr_shift': lr_shift,
+                        'input_size': input_size, 'feature size': feature_size, 'decoder_init1': decoder_int1},
+                       {'hparam/loss': loss})
     writer.add_graph(model, X)
     writer.close()
 
