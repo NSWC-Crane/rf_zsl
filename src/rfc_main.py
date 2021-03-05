@@ -28,13 +28,14 @@ import numpy as np
 ###torch.manual_seed(42)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
+torch.set_printoptions(precision=10)
 
 max_epochs = 12000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-input_size = 16
+input_size = 4
 feature_size = 1
-decoder_int1 = 8
+decoder_int1 = 1
 
 read_data = True
 
@@ -77,8 +78,8 @@ class Decoder(nn.Module):
     def __init__(self, output_size, feature_size):
         super().__init__()
         self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
-        self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
-        self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
+        #self.hidden_layer_1 = nn.Linear(decoder_int1, 64, bias=False)
+        #self.hidden_layer_2 = nn.Linear(64, decoder_int1, bias=False)
         self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
         #self.prelu = nn.PReLU(1, 0.25)
         #self.multp = nn.Parameter(torch.tensor([[2048.0]]))
@@ -90,7 +91,7 @@ class Decoder(nn.Module):
 
     def forward(self, activation):
         #activation = self.prelu(activation)
-        activation = self.input_layer(activation)
+        #activation = self.input_layer(activation)
         #activation = self.elu(activation)
         #activation = self.prelu(activation)
         #activation = self.relu(activation)
@@ -193,18 +194,25 @@ if __name__ == '__main__':
         #outputs = torch.floor(outputs + 0.5)
 
         train_loss = criterion(outputs, X)
-        train_loss.backward()
-        optimizer.step()
+
         loss += train_loss.item()
 
         print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
 
         if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
+            bp = 10
             break
+
+        train_loss.backward()
+        optimizer.step()
 
         # play with loss schedule
         #scheduler.step(math.floor(loss))
         #scheduler.step()
+
+# -----------------------------------------------------------------------------
+# Training Complete
+# -----------------------------------------------------------------------------
 
     # after the training make more deep copies to test the results
     with torch.no_grad():
