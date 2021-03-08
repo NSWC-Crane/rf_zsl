@@ -10,6 +10,9 @@ import torchvision
 import copy
 import math
 import numpy as np
+import datetime
+
+from torch.utils.tensorboard import SummaryWriter
 
 
 ###torch.manual_seed(42)
@@ -168,6 +171,10 @@ if __name__ == '__main__':
     X = torch.from_numpy(x).to(device)
     X = X.view(-1, io_size)
 
+    # set up the stuff for writing
+    date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    writer = SummaryWriter(log_dir=("../results/fp_dec/"+date_time))
+
     # model must be set to train mode for QAT logic to work
     model.train()
 
@@ -175,6 +182,9 @@ if __name__ == '__main__':
     lr_shift = 10.0
 
     epoch_inc = 2000
+
+    #writer.add_hparams({"epoch_inc": epoch_inc, "io_size": io_size, "feature_size": feature_size}, {"none": 0})
+    writer.add_scalar("epoch_inc", epoch_inc)
 
     for epoch in range(max_epochs):
         #model.train()
@@ -204,6 +214,9 @@ if __name__ == '__main__':
                 t2a = torch.floor(t2a+0.5)/(scale)
                 model.decoder.output_layer.weight.data = t2a
 
+        # save the results
+        writer.add_scalar("Loss/train", loss, epoch)
+
         train_loss.backward()
         optimizer.step()
 
@@ -212,6 +225,8 @@ if __name__ == '__main__':
             lr = optimizer.param_groups[0]['lr']
             optimizer.param_groups[0]['lr'] = 0.95*lr
             lr_shift = 0.9*lr_shift
+
+        writer.add_scalar("lr", optimizer.param_groups[0]['lr'], epoch)
 
         # play with loss schedule
         #scheduler.step(math.floor(loss))
@@ -242,6 +257,10 @@ if __name__ == '__main__':
         Y2 = torch.floor(D(F) + 0.5)
         loss2 = torch.sum(torch.abs(Y2 - X))
         print("loss2 = {:.6f}".format(loss2.item()))
+
+    # close the writer
+    writer.flush()
+    writer.close()
 
     # just a stopping break point before the code ends
     bp = 9
