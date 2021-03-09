@@ -36,5 +36,21 @@ Epoch_error_graph.jpg
 | dataset6 |     32     |      2       |       16     |
 | dataset7 |     32     |      16      |       16     |
 | dataset8 |     32     |      21      |       21     |
-| dataset9 |     1      |      1       |       8      |
+| dataset9 |     8      |      1       |       8      |
+
+
+
+
+Epoch_error_graph_2.jpg
+| *        | input_size | feature_size | decoder_int1 |
+| -------- | ---------- | ------------ | ------------ |
+| dataset1 |     8      |      8       |       4      |
+| dataset2 |     8      |      8       |       8      |
+| dataset3 |     8      |      1       |       4      |
+| dataset4 |     8      |      4       |       4      |
+| dataset5 |     8      |      8       |       8      |
+| dataset6 |     8      |      1       |       6      |
+| dataset7 |     8      |      4       |       6      |
+| dataset8 |     4      |      4       |       8      |
+| dataset9 |     2      |      2       |       8      |
 
