@@ -20,3 +20,21 @@ feature size = 4
 decoder_int = 8
 seed = 116 (the best seed i found for accuracy; tested seeds 1 - 200)
 
+
+##########################################33
+information for the epoch graphs.
+The graphs are defined by the datasets i have below, based on input size, feature size, and decoder_int1.
+
+Epoch_error_graph.jpg
+| *        | input_size | feature_size | decoder_int1 |
+| -------- | ---------- | ------------ | ------------ |
+| dataset1 |     8      |      8       |       4      |
+| dataset2 |     16     |      8       |       8      |
+| dataset3 |     16     |      16      |       8      |
+| dataset4 |     32     |      1       |       8      |
+| dataset5 |     32     |      2       |       8      |
+| dataset6 |     32     |      2       |       16     |
+| dataset7 |     32     |      16      |       16     |
+| dataset8 |     32     |      21      |       21     |
+| dataset9 |     1      |      1       |       8      |
+
