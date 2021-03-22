@@ -2,6 +2,8 @@
 This file is an experiment to test compression using a decoder only with fixed point and or integer based weights
 '''
 
+import os
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,9 +25,9 @@ torch.set_printoptions(precision=10)
 max_epochs = 20000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 32
-feature_size = 21
-decoder_int1 = 21
+io_size = 16
+feature_size = 1
+decoder_int1 = 1
 
 read_data = False
 
@@ -88,7 +90,7 @@ for parameter in model.decoder.parameters():
 #model.decoder.prelu.weight.requires_grad = False
 
 #introduce a couple of fixed point parameters
-fp_bits = 4         # number of bits used to represent the weights
+fp_bits = 3         # number of bits used to represent the weights
 fp_range = 2**fp_bits      # the max value
 
 # the min/max number (-fp_range/2 <= x < fp_range/2)
@@ -99,7 +101,7 @@ fp_range = 2**fp_bits      # the max value
 # the min/max number (0 <= x < fp_range)
 fp_min = 0
 fp_max = fp_range - 1
-scale = 1     # this is the scale factor to divide the final number by
+scale = 7     # this is the scale factor to divide the final number by
 
 
 # use something like this to manually set the weights.  use the no_grad() to prevent tracking of gradient changes
@@ -115,8 +117,10 @@ with torch.no_grad():
     #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.integers(fp_min, fp_max, output_layer_shape).astype(np.float32)/(scale))).to(device)
     #model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, input_layer_shape).astype(np.float32))).to(device)
     #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, output_layer_shape).astype(np.float32))).to(device)
-    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(input_layer_shape).astype(np.float32))).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(output_layer_shape).astype(np.float32))).to(device)
+    # model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(input_layer_shape).astype(np.float32))).to(device)
+    # model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(output_layer_shape).astype(np.float32))).to(device)
+    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy( np.ones(input_layer_shape).astype(np.float32))).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy( np.ones(output_layer_shape).astype(np.float32))).to(device)
     #np.ones((1, 1, 1, feature_size)
 
     # make a deep copy of the weights to make sure they don't change
@@ -150,7 +154,7 @@ train_loader = torch.utils.data.DataLoader(
 if __name__ == '__main__':
 
     idx = 0
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(10)
 
     if(read_data == True):
         x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
@@ -164,16 +168,23 @@ if __name__ == '__main__':
         x = rng.integers(0, 256, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
 
     # input into the decoder
-    F = torch.from_numpy(np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
+    F = torch.from_numpy(128*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
     X = torch.from_numpy(x).to(device)
     X = X.view(-1, io_size)
 
-    # set up the stuff for writing
     date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    writer = SummaryWriter(log_dir=("../results/fp_dec/"+date_time))
+    scenario_name = "fs{:02d}-io{:03d}".format(feature_size, io_size)
+    log_dir = "../results/" + scenario_name + "/"
+
+    os.makedirs(log_dir)
+
+    # set up the stuff for tensorboard writing
+    # writer = SummaryWriter(log_dir=("../results/fp_dec_02/"+date_time))
+
+    data_writer = open((log_dir + scenario_name + "_" + date_time + ".txt"), "w")
 
     # model must be set to train mode for QAT logic to work
     model.train()
@@ -181,10 +192,14 @@ if __name__ == '__main__':
     m = 128
     lr_shift = 10.0
 
-    epoch_inc = 2000
+    epoch_inc = 2000000
 
-    #writer.add_hparams({"epoch_inc": epoch_inc, "io_size": io_size, "feature_size": feature_size}, {"none": 0})
-    writer.add_scalar("epoch_inc", epoch_inc)
+    data_writer.write("#-------------------------------------------------------------------------------\n")
+
+    data_writer.write("io_size: {}\n".format(io_size))
+    data_writer.write("feature_size: {}\n".format(feature_size))
+
+    #writer.add_scalar("epoch_inc", epoch_inc)
 
     for epoch in range(max_epochs):
         #model.train()
@@ -195,27 +210,28 @@ if __name__ == '__main__':
         train_loss = criterion(outputs, X)
         loss += train_loss.item()
 
-        print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
+        print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, loss))
 
-        if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
+        loss_q = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+        if (loss_q < 1):
             bp = 10
             break
 
         # clamp the weights to a fixed point value
-        if(epoch % epoch_inc == 0):
-            with torch.no_grad():
-                t1 = model.decoder.input_layer.weight.data
-                t1a = torch.clamp_min(torch.clamp_max(t1 * scale, fp_max), fp_min)
-                t1a = torch.floor(t1a+0.5)/(scale)
-                model.decoder.input_layer.weight.data = t1a
-
-                t2 = model.decoder.output_layer.weight.data
-                t2a = torch.clamp_min(torch.clamp_max(t2 * scale, fp_max), fp_min)
-                t2a = torch.floor(t2a+0.5)/(scale)
-                model.decoder.output_layer.weight.data = t2a
+        # if(epoch % epoch_inc == 0):
+        #     with torch.no_grad():
+        #         t1 = model.decoder.input_layer.weight.data
+        #         t1a = torch.clamp_min(torch.clamp_max(t1 * scale, fp_max), fp_min)
+        #         t1a = torch.floor(t1a+0.5)/(scale)
+        #         model.decoder.input_layer.weight.data = t1a
+        #
+        #         t2 = model.decoder.output_layer.weight.data
+        #         t2a = torch.clamp_min(torch.clamp_max(t2 * scale, fp_max), fp_min)
+        #         t2a = torch.floor(t2a+0.5)/(scale)
+        #         model.decoder.output_layer.weight.data = t2a
 
         # save the results
-        writer.add_scalar("Loss/train", loss, epoch)
+        # writer.add_scalar("Loss/train", loss_q, epoch)
 
         train_loss.backward()
         optimizer.step()
@@ -226,41 +242,78 @@ if __name__ == '__main__':
             optimizer.param_groups[0]['lr'] = 0.95*lr
             lr_shift = 0.9*lr_shift
 
-        writer.add_scalar("lr", optimizer.param_groups[0]['lr'], epoch)
+        # writer.add_scalar("lr", optimizer.param_groups[0]['lr'], epoch)
 
         # play with loss schedule
         #scheduler.step(math.floor(loss))
         #scheduler.step()
 
+    loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+    print("\nloss = {:.6f}".format(loss.item()))
+
+    data_writer.write("\n#-------------------------------------------------------------------------------\n")
+    data_writer.write("final_loss: {:.4f}\n".format(loss.item()))
+
     model.eval()
-    with torch.no_grad():
-        #outputs = model(X)
-        #outputs = torch.floor(outputs + 0.5)
-        loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
-        print("\nloss = {:.6f}".format(loss.item()))
 
-        dw1b = copy.deepcopy(model.decoder.input_layer.weight)
-        dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-        dw1b_q = torch.clamp_min(torch.clamp_max(dw1b * scale, fp_max), fp_min)
-        dw2b_q = torch.clamp_min(torch.clamp_max(dw2b * scale, fp_max), fp_min)
-        d1 = torch.floor(dw1b_q + 0.5)/(scale)
-        d2 = torch.floor(dw2b_q + 0.5)/(scale)
+    for fp_bits in range(3, 9):
+        fp_range = 2**fp_bits      # the max value
 
-        #print("\nOriginal Input:\n", X)
-        #print("\nOutput:\n",torch.floor(outputs + 0.5))
+        # the min/max number (0 <= x < fp_range)
+        fp_min = 0
+        fp_max = fp_range - 1
 
-        Y = torch.floor(model.decoder(F) + 0.5)
+        min_scale = 2
+        min_loss = 1e10
 
-        D = copy.deepcopy(model.decoder)
-        D.input_layer.weight.data = d1
-        D.output_layer.weight.data = d2
-        Y2 = torch.floor(D(F) + 0.5)
-        loss2 = torch.sum(torch.abs(Y2 - X))
-        print("loss2 = {:.6f}".format(loss2.item()))
+        data_wr = open((log_dir + scenario_name + "_{}_".format(fp_bits) + date_time + ".txt"), "w")
+
+        for scale in np.arange(fp_bits, 20*fp_bits+0.005, 0.005):
+
+            with torch.no_grad():
+                #outputs = model(X)
+                #outputs = torch.floor(outputs + 0.5)
+
+
+                dw1b = copy.deepcopy(model.decoder.input_layer.weight)
+                dw2b = copy.deepcopy(model.decoder.output_layer.weight)
+                dw1b_q = torch.clamp_min(torch.clamp_max(torch.floor(dw1b * scale), fp_max), fp_min)
+                dw2b_q = torch.clamp_min(torch.clamp_max(torch.floor(dw2b * scale), fp_max), fp_min)
+                d1 = torch.floor(dw1b_q + 0.5)/(scale)
+                d2 = torch.floor(dw2b_q + 0.5)/(scale)
+
+                #print("\nOriginal Input:\n", X)
+                #print("\nOutput:\n",torch.floor(outputs + 0.5))
+
+                Y = torch.floor(model.decoder(F) + 0.5)
+
+                D = copy.deepcopy(model.decoder)
+                D.input_layer.weight.data = d1
+                D.output_layer.weight.data = d2
+                Y2 = torch.floor(D(F) + 0.5)
+                loss2 = torch.sum(torch.abs(Y2 - X))
+                # print("loss2 = {:.6f}".format(loss2.item()))
+                print("scale = {:0.3f}, loss = {:.2f}".format(scale, loss2.item()))
+
+                if(loss2.item() < min_loss):
+                    min_loss = loss2.item()
+                    min_scale = scale
+
+                # writer.add_scalar("Loss/scale - {:01d} bits ".format(fp_bits), loss2, scale*1000)
+
+                data_wr.write("{:0.3f}, {}\n".format(scale, loss2))
+
+        data_wr.close()
+
+        # writer.add_hparams({"epoch_inc": epoch_inc, "io_size": io_size, "feature_size": feature_size, "min_scale": min_scale,
+        #                     "fp_bits": fp_bits, "fp_min": fp_min, "fp_max": fp_max},
+        #                    {"FP Loss": min_loss})
 
     # close the writer
-    writer.flush()
-    writer.close()
+    # writer.flush()
+    # writer.close()
+
+    data_writer.close()
 
     # just a stopping break point before the code ends
     bp = 9
