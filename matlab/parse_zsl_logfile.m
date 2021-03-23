@@ -57,6 +57,11 @@ else
 end
 
 %% plot the data
+min_data = zeros(num_tests, 1);
+min_idx = zeros(num_tests, 1);
+
+min_x = 1e12;
+max_x = 0;
 
 legend_str = cell(num_tests, 1);
 
@@ -70,16 +75,28 @@ grid on
 for idx=1:num_tests
     data = results{idx};
     
-    min_data = min(data(:,2));
+    [min_data(idx), min_idx(idx)] = min(data(:,2));
+    
+    tmp_x = min(data(:,1));
+    if(tmp_x < min_x)
+        min_x = tmp_x;
+    end
+        
+    tmp_x = max(data(:,1));
+    if(tmp_x > max_x)
+        max_x = tmp_x;
+    end
+    
     plot(data(:,1), data(:,2));
-    legend_str{idx} = strcat(scenario_name{idx},'-bits :', 32, num2str(min_data, '%02d'));
+    legend_str{idx} = strcat(scenario_name{idx},'-bits :', 32, num2str(min_data(idx), '%02d'));
 end
 
 set(gca, 'fontweight', 'bold', 'FontSize', 13);
 
+xlim([min_x, max_x]);
 xlabel('Scale', 'fontweight', 'bold', 'FontSize', 13);
 
-ylim([0 140]);
+ylim([0 200]);
 ylabel('Loss', 'fontweight', 'bold', 'FontSize', 13);
 
 legend(legend_str, 'fontweight', 'bold', 'FontSize', 13) 
@@ -90,4 +107,14 @@ ax.Position = [0.05 0.11 0.93 0.84];
 print(plot_num, '-dpng', fullfile(results_file_path, strcat('fp_results.png')));
 
 plot_num = plot_num + 1;  
+
+%% deal the the mins
+
+[min_d2, min_idx2] = min(min_data);
+
+X_hat = results{min_idx2}(min_idx(min_idx2), 3:end);
+
+X_hat
+
+
 
