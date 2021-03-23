@@ -159,16 +159,18 @@ if __name__ == '__main__':
     if(read_data == True):
         x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
         x = x[np.s_[idx:(idx + io_size)]]
+        data_type = "real"
     else:
         # normal range of IQ values
         #x = rng.integers(-2048, 2048, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
         # normal range of IQ values converted to unsigned with a shift
         #x = rng.integers(0, 4096, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
         # normal IQ values decomposed into 8-bit unsigned values
-        x = rng.integers(0, 256, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
+        x = rng.integers(0, 4096, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
+        data_type = "12bit-uint"
 
     # input into the decoder
-    F = torch.from_numpy(128*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
+    F = torch.from_numpy(2048*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
@@ -176,10 +178,10 @@ if __name__ == '__main__':
     X = X.view(-1, io_size)
 
     date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    scenario_name = "fs{:02d}-io{:03d}".format(feature_size, io_size)
+    scenario_name = "fs{:02d}-io{:03d}-".format(feature_size, io_size) + data_type
     log_dir = "../results/" + scenario_name + "/"
 
-    os.makedirs(log_dir)
+    os.makedirs(log_dir, exist_ok=True)
 
     # set up the stuff for tensorboard writing
     # writer = SummaryWriter(log_dir=("../results/fp_dec_02/"+date_time))
@@ -198,6 +200,15 @@ if __name__ == '__main__':
 
     data_writer.write("io_size: {}\n".format(io_size))
     data_writer.write("feature_size: {}\n".format(feature_size))
+    data_writer.write("F: ")
+
+    for idx in range(feature_size):
+        data_writer.write("{:.4f}".format((F.numpy())[0][idx]))
+        if(idx<feature_size-1):
+            data_writer.write(", ")
+        else:
+            data_writer.write("\n")
+
 
     #writer.add_scalar("epoch_inc", epoch_inc)
 
@@ -253,10 +264,20 @@ if __name__ == '__main__':
 
     data_writer.write("\n#-------------------------------------------------------------------------------\n")
     data_writer.write("final_loss: {:.4f}\n".format(loss.item()))
+    data_writer.write("X: ")
+
+    for idx in range(io_size):
+        data_writer.write("{}".format((X.numpy())[0][idx]))
+        if(idx<io_size-1):
+            data_writer.write(", ")
+        else:
+            data_writer.write("\n")
+
+    data_writer.close()
 
     model.eval()
 
-    for fp_bits in range(3, 9):
+    for fp_bits in range(10, 11):
         fp_range = 2**fp_bits      # the max value
 
         # the min/max number (0 <= x < fp_range)
@@ -268,7 +289,7 @@ if __name__ == '__main__':
 
         data_wr = open((log_dir + scenario_name + "_{}_".format(fp_bits) + date_time + ".txt"), "w")
 
-        for scale in np.arange(fp_bits, 20*fp_bits+0.005, 0.005):
+        for scale in np.arange(10*fp_bits, 180*fp_bits+0.005, 0.005):
 
             with torch.no_grad():
                 #outputs = model(X)
@@ -301,7 +322,14 @@ if __name__ == '__main__':
 
                 # writer.add_scalar("Loss/scale - {:01d} bits ".format(fp_bits), loss2, scale*1000)
 
-                data_wr.write("{:0.3f}, {}\n".format(scale, loss2))
+                data_wr.write("{:0.3f}, {}, ".format(scale, loss2))
+
+                for idx in range(io_size):
+                    data_wr.write("{}".format((Y2.numpy())[0][idx]))
+                    if(idx<io_size-1):
+                        data_wr.write(", ")
+                    else:
+                        data_wr.write("\n")
 
         data_wr.close()
 
@@ -313,7 +341,6 @@ if __name__ == '__main__':
     # writer.flush()
     # writer.close()
 
-    data_writer.close()
 
     # just a stopping break point before the code ends
     bp = 9
