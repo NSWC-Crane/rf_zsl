@@ -169,6 +169,9 @@ if __name__ == '__main__':
         x = rng.integers(0, 4096, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
         data_type = "12bit-uint"
 
+    # get the mean of x
+    x_mean = math.floor(np.mean(x))
+
     # input into the decoder
     F = torch.from_numpy(2048*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
@@ -203,7 +206,7 @@ if __name__ == '__main__':
     data_writer.write("F: ")
 
     for idx in range(feature_size):
-        data_writer.write("{:.4f}".format((F.numpy())[0][idx]))
+        data_writer.write("{:.6f}".format((F.numpy())[0][idx]))
         if(idx<feature_size-1):
             data_writer.write(", ")
         else:
@@ -277,19 +280,22 @@ if __name__ == '__main__':
 
     model.eval()
 
-    for fp_bits in range(10, 11):
+    for fp_bits in range(8, 13):
         fp_range = 2**fp_bits      # the max value
 
         # the min/max number (0 <= x < fp_range)
         fp_min = 0
         fp_max = fp_range - 1
 
-        min_scale = 2
+        scale_step = 0.005
+
+        min_scale = math.floor(fp_range/16.0)
+        max_scale = (fp_range * 0.625) + scale_step
         min_loss = 1e10
 
-        data_wr = open((log_dir + scenario_name + "_{}_".format(fp_bits) + date_time + ".txt"), "w")
+        data_wr = open((log_dir + scenario_name + "_{:02d}-bits_".format(fp_bits) + date_time + ".txt"), "w")
 
-        for scale in np.arange(10*fp_bits, 180*fp_bits+0.005, 0.005):
+        for scale in np.arange(min_scale, max_scale, scale_step):
 
             with torch.no_grad():
                 #outputs = model(X)
@@ -316,9 +322,9 @@ if __name__ == '__main__':
                 # print("loss2 = {:.6f}".format(loss2.item()))
                 print("scale = {:0.3f}, loss = {:.2f}".format(scale, loss2.item()))
 
-                if(loss2.item() < min_loss):
-                    min_loss = loss2.item()
-                    min_scale = scale
+                # if(loss2.item() < min_loss):
+                #     min_loss = loss2.item()
+                #     min_scale = scale
 
                 # writer.add_scalar("Loss/scale - {:01d} bits ".format(fp_bits), loss2, scale*1000)
 

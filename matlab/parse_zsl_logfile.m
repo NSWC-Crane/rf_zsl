@@ -88,7 +88,7 @@ for idx=1:num_tests
     end
     
     plot(data(:,1), data(:,2));
-    legend_str{idx} = strcat(scenario_name{idx},'-bits :', 32, num2str(min_data(idx), '%02d'));
+    legend_str{idx} = strcat(scenario_name{idx},': error-', num2str(min_data(idx), '%02d'), '; scale-', num2str(data(min_idx(idx),1), '%3.5f'));
 end
 
 set(gca, 'fontweight', 'bold', 'FontSize', 13);
