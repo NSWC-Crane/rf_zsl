@@ -11,7 +11,7 @@ plot_num = 1;
 %% select the data file with the images
 
 file_filter = {'*.bin','Binary Files';'*.*','All Files' };
-startpath = 'D:\Projects\';
+%startpath = 'D:\Projects\';
 
 [input_file, input_path] = uigetfile(file_filter, 'Select Binary File', startpath);
 if(input_path == 0)
@@ -92,6 +92,10 @@ ytickformat('%1.3f')
 ylabel('Time (s)', 'fontweight', 'bold', 'FontSize', 13);
 
 view(0, 90);
+
+c = colorbar;
+c.Label.String = 'Power (dB)';
+
 plot_num = plot_num + 1;
 
 %% 
