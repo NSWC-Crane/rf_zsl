@@ -31,6 +31,29 @@ decoder_int1 = 1
 
 read_data = False
 
+class scale_net(nn.Module):
+    def __init__(self, fp_max, fp_min):
+        super(scale_net, self).__init__()
+        # self.scale = nn.Parameter(data=torch.tensor(1.0), requires_grad=True)
+        self.scale = torch.nn.Parameter(torch.randn(()))
+
+    # self.scale = nn.Linear(1, 1, bias=False)
+        self.fp_max = fp_max
+        self.fp_min = fp_min
+
+    def forward(self, feature, dec):
+        d_ol = copy.deepcopy(dec.output_layer.weight)
+
+        # d_ol_q = torch.clamp_min(torch.clamp_max(torch.floor(self.scale(d_ol)), self.fp_max), self.fp_min)
+        # dec.output_layer.weight.data = torch.floor(d_ol_q + 0.5)/self.scale.weight.data
+
+        d_ol_q = torch.clamp_min(torch.clamp_max(torch.floor(d_ol * self.scale), self.fp_max), self.fp_min)
+        dec.output_layer.weight.data = torch.floor(d_ol_q + 0.5)/self.scale
+
+        xh = torch.floor(dec(feature) + 0.5)
+        return xh
+
+
 # create the decoder class
 class Decoder(nn.Module):
     def __init__(self, output_size, feature_size):
@@ -119,13 +142,13 @@ with torch.no_grad():
     #model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(mr.uniform(-rnd_range, rnd_range, output_layer_shape).astype(np.float32))).to(device)
     # model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(input_layer_shape).astype(np.float32))).to(device)
     # model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy((fp_max >> 1) * np.ones(output_layer_shape).astype(np.float32))).to(device)
-    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy( np.ones(input_layer_shape).astype(np.float32))).to(device)
-    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy( np.ones(output_layer_shape).astype(np.float32))).to(device)
+    model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(np.ones(input_layer_shape).astype(np.float32))).to(device)
+    model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(np.ones(output_layer_shape).astype(np.float32))).to(device)
     #np.ones((1, 1, 1, feature_size)
 
     # make a deep copy of the weights to make sure they don't change
-    dw1a = copy.deepcopy(model.decoder.input_layer.weight)
-    dw2a = copy.deepcopy(model.decoder.output_layer.weight)
+    # dw1a = copy.deepcopy(model.decoder.input_layer.weight)
+    # dw2a = copy.deepcopy(model.decoder.output_layer.weight)
 
 
 # this is setup as a static learning rate.  we may want to look at variable lr based on some performance numbers
@@ -155,6 +178,9 @@ if __name__ == '__main__':
 
     idx = 0
     rng = np.random.default_rng(10)
+    data_bits = 4
+    data_min = 0
+    data_max = 2**data_bits
 
     if(read_data == True):
         x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
@@ -166,14 +192,14 @@ if __name__ == '__main__':
         # normal range of IQ values converted to unsigned with a shift
         #x = rng.integers(0, 4096, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
         # normal IQ values decomposed into 8-bit unsigned values
-        x = rng.integers(0, 4096, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
-        data_type = "12bit-uint"
+        x = rng.integers(data_min, data_max, size=(1, 1, 1, io_size), dtype=np.int16, endpoint=False).astype(np.float32)
+        data_type = "{:02d}bit-uint".format(data_bits)
 
     # get the mean of x
     x_mean = math.floor(np.mean(x))
 
     # input into the decoder
-    F = torch.from_numpy(2048*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
+    F = torch.from_numpy(data_max*0.5*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
@@ -186,35 +212,31 @@ if __name__ == '__main__':
 
     os.makedirs(log_dir, exist_ok=True)
 
-    # set up the stuff for tensorboard writing
-    # writer = SummaryWriter(log_dir=("../results/fp_dec_02/"+date_time))
-
     data_writer = open((log_dir + scenario_name + "_" + date_time + ".txt"), "w")
 
     # model must be set to train mode for QAT logic to work
     model.train()
 
-    m = 128
     lr_shift = 10.0
 
     epoch_inc = 2000000
 
     data_writer.write("#-------------------------------------------------------------------------------\n")
 
-    data_writer.write("io_size: {}\n".format(io_size))
-    data_writer.write("feature_size: {}\n".format(feature_size))
-    data_writer.write("F: ")
+    data_writer.write("# data bits, min, max:\n{}, {}, {}\n\n".format(data_bits, data_min, data_max))
+
+    data_writer.write("# io_size:\n{}\n\n".format(io_size))
+    data_writer.write("# feature_size:\n{}\n\n".format(feature_size))
+    data_writer.write("# F:\n")
 
     for idx in range(feature_size):
         data_writer.write("{:.6f}".format((F.numpy())[0][idx]))
         if(idx<feature_size-1):
             data_writer.write(", ")
         else:
-            data_writer.write("\n")
+            data_writer.write("\n\n")
 
-
-    #writer.add_scalar("epoch_inc", epoch_inc)
-
+    # start the training
     for epoch in range(max_epochs):
         #model.train()
         loss = 0
@@ -231,43 +253,22 @@ if __name__ == '__main__':
             bp = 10
             break
 
-        # clamp the weights to a fixed point value
-        # if(epoch % epoch_inc == 0):
-        #     with torch.no_grad():
-        #         t1 = model.decoder.input_layer.weight.data
-        #         t1a = torch.clamp_min(torch.clamp_max(t1 * scale, fp_max), fp_min)
-        #         t1a = torch.floor(t1a+0.5)/(scale)
-        #         model.decoder.input_layer.weight.data = t1a
-        #
-        #         t2 = model.decoder.output_layer.weight.data
-        #         t2a = torch.clamp_min(torch.clamp_max(t2 * scale, fp_max), fp_min)
-        #         t2a = torch.floor(t2a+0.5)/(scale)
-        #         model.decoder.output_layer.weight.data = t2a
-
-        # save the results
-        # writer.add_scalar("Loss/train", loss_q, epoch)
-
         train_loss.backward()
         optimizer.step()
 
         # different way of gradually reducing learning rate
-        if(loss < lr_shift):
-            lr = optimizer.param_groups[0]['lr']
-            optimizer.param_groups[0]['lr'] = 0.95*lr
-            lr_shift = 0.9*lr_shift
+        # if(loss < lr_shift):
+        #     lr = optimizer.param_groups[0]['lr']
+        #     optimizer.param_groups[0]['lr'] = 0.95*lr
+        #     lr_shift = 0.9*lr_shift
 
-        # writer.add_scalar("lr", optimizer.param_groups[0]['lr'], epoch)
-
-        # play with loss schedule
-        #scheduler.step(math.floor(loss))
-        #scheduler.step()
 
     loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
     print("\nloss = {:.6f}".format(loss.item()))
 
-    data_writer.write("\n#-------------------------------------------------------------------------------\n")
-    data_writer.write("final_loss: {:.4f}\n".format(loss.item()))
-    data_writer.write("X: ")
+    data_writer.write("#-------------------------------------------------------------------------------\n")
+    data_writer.write("# final_loss:\n{:.4f}\n\n".format(loss.item()))
+    data_writer.write("# X:\n")
 
     for idx in range(io_size):
         data_writer.write("{}".format((X.numpy())[0][idx]))
@@ -280,7 +281,8 @@ if __name__ == '__main__':
 
     model.eval()
 
-    for fp_bits in range(8, 13):
+    for fp_bits in range(math.floor(data_bits / 2)-1, data_bits + 1):
+
         fp_range = 2**fp_bits      # the max value
 
         # the min/max number (0 <= x < fp_range)
@@ -302,11 +304,11 @@ if __name__ == '__main__':
                 #outputs = torch.floor(outputs + 0.5)
 
 
-                dw1b = copy.deepcopy(model.decoder.input_layer.weight)
+                #dw1b = copy.deepcopy(model.decoder.input_layer.weight)
                 dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-                dw1b_q = torch.clamp_min(torch.clamp_max(torch.floor(dw1b * scale), fp_max), fp_min)
+                #dw1b_q = torch.clamp_min(torch.clamp_max(torch.floor(dw1b * scale), fp_max), fp_min)
                 dw2b_q = torch.clamp_min(torch.clamp_max(torch.floor(dw2b * scale), fp_max), fp_min)
-                d1 = torch.floor(dw1b_q + 0.5)/(scale)
+                #d1 = torch.floor(dw1b_q + 0.5)/(scale)
                 d2 = torch.floor(dw2b_q + 0.5)/(scale)
 
                 #print("\nOriginal Input:\n", X)
@@ -315,7 +317,7 @@ if __name__ == '__main__':
                 Y = torch.floor(model.decoder(F) + 0.5)
 
                 D = copy.deepcopy(model.decoder)
-                D.input_layer.weight.data = d1
+                #D.input_layer.weight.data = d1
                 D.output_layer.weight.data = d2
                 Y2 = torch.floor(D(F) + 0.5)
                 loss2 = torch.sum(torch.abs(Y2 - X))
