@@ -13,14 +13,32 @@ plot_num = 1;
 file_filter = {'*.txt','Text Files';'*.*','All Files' };
 startpath = 'D:\Projects\rf_zsl\results';
 
-[results_file, results_file_path] = uigetfile(file_filter, 'Select the Results File(s)', startpath, 'multiselect','on');
+[log_file, results_file_path] = uigetfile(file_filter, 'Select the Main Logfile', startpath, 'multiselect','off');
+if(results_file_path == 0)
+    return;
+end
+
+
+%% Select the text files that contain the data
+
+file_filter = {'*.txt','Text Files';'*.*','All Files' };
+startpath = 'D:\Projects\rf_zsl\results';
+
+[results_file, results_file_path] = uigetfile(file_filter, 'Select the Results File(s)', results_file_path, 'multiselect','on');
 if(results_file_path == 0)
     return;
 end
 
 commandwindow;
 
-%%  Process through the files and read in the data
+%% Process through the main log file to get the X value
+
+params = parse_input_parameters(fullfile(results_file_path, log_file));
+
+data_stats = str2double(params{1});
+X = str2double(params{end});
+
+%% Process through the files and read in the data
 
 if(iscell(results_file))
     
@@ -39,7 +57,7 @@ if(iscell(results_file))
         scenario_name{idx} = results_file{idx}(k(1)+1:k(2)-1);
         
         %results{idx, :} = parse_csv_file(fullfile(results_file_path, results_file{idx}));
-        results{idx, :} = csvread(fullfile(results_file_path, results_file{idx}));
+        results{idx, :} = csvread(fullfile(results_file_path, results_file{idx}));        
         
     end
     
@@ -77,6 +95,21 @@ for idx=1:num_tests
     
     [min_data(idx), min_idx(idx)] = min(data(:,2));
     
+    X_hat = data(min_idx(idx), 3:end);
+    
+    x_diff = X - X_hat;
+    
+    x_error = sum(abs(x_diff(:)))/((data_stats(3) - data_stats(2))*numel(x_diff));
+    
+%     x_snr = 10*log10(sum((X-mean(X)).^2)/sum((X-X_hat).^2));
+    
+    d_si = log10(X+1) - log10(X_hat+1);  
+    x_silog = sum(d_si.^2)/numel(X) - (sum(d_si)/numel(X))^2;
+    
+    x_nrmse = sqrt(sum(x_diff.^2))/numel(X);
+    
+    x_nmae = sum(abs(x_diff))/numel(X);
+    
     tmp_x = min(data(:,1));
     if(tmp_x < min_x)
         min_x = tmp_x;
@@ -88,7 +121,9 @@ for idx=1:num_tests
     end
     
     plot(data(:,1), data(:,2));
-    legend_str{idx} = strcat(scenario_name{idx},': error-', num2str(min_data(idx), '%02d'), '; scale-', num2str(data(min_idx(idx),1), '%3.5f'));
+
+    legend_str{idx} = strcat(scenario_name{idx},': NMAE =', 32, num2str(x_nmae, '%2.4f'), '; scale =', 32, num2str(data(min_idx(idx),1), '%3.3f'));
+    fprintf('%s loss: %03d\n', scenario_name{idx}, data(min_idx(idx),2));
 end
 
 set(gca, 'fontweight', 'bold', 'FontSize', 13);
