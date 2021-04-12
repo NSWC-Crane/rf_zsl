@@ -7,8 +7,8 @@ import torchvision
 import copy
 import math
 import numpy as np
-# from torch.utils.tensorboard import SummaryWriter
 import datetime
+import os
 
 from model import AE
 from params import *
@@ -22,11 +22,14 @@ torch.backends.cudnn.benchmark = False
 # setup everything
 model = AE(input_size, feature_size).to(device)
 init_weights(model)
+# test_loss = dev_loss(model)
 
 # this is setup as a static learning rate.  we may want to look at variable lr based on some performance numbers
 #optimizer = optim.Adam(model.parameters(), lr=1e-3)
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=5e-3)
-criterion = nn.MSELoss()
+criterion1 = nn.MSELoss()
+criterion2 = DevLoss()
+criterion3 = SmallWeightLoss()
 
 #cv2.setNumThreads(0)
 
@@ -46,83 +49,124 @@ if __name__ == '__main__':
     X = torch.from_numpy(x).to(device)
     X = X.view(-1, input_size)
 
+    # X += 2048
+
+    # m = torch.mean(X).detach()
+    # s = torch.std(X).detach()
+    #
+    # X -= m
+    # X /= s
+
     # model must be set to train mode for QAT logic to work
     model.train()
     lr_shift = 1.0
+    frozen_encoder = False
+    data_type = 'unfrozen-binary'
+
+    date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    scenario_name = "fs{:02}-m{:03}-".format(feature_size, m) + data_type
+    log_dir = "../results/" + scenario_name + "/"
+
+    os.makedirs(log_dir, exist_ok=True)
+
+    data_writer = open((log_dir + scenario_name + "_" + date_time + ".txt"), "w")
+    data_writer.write("#-------------------------------------------------------------------------------\n")
+
+    data_writer.write("feature_size: {}\n".format(feature_size))
+    data_writer.write("m: {}\n".format(m))
+    data_writer.write("update_weights: {}\n".format(update_weights))
+    data_writer.write("frozen_encoder: {}\n".format(frozen_encoder))
+
+    loss_writer = open((log_dir + scenario_name + ".txt"), "a")
+    loss_writer.write(scenario_name + "_" + date_time + ",")
+
+    model.round_weights(m)
+    outputs = model(X)
+    loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+    print("\nloss = {:.6f}".format(loss.item()))
 
     for epoch in range(max_epochs):
         model.train()
         loss = 0
         optimizer.zero_grad()
         outputs = model(X)
-        # outputs = torch.floor(outputs + 0.5)
 
-        train_loss = criterion(outputs, X)
+        # [p_loss, n_loss] = dev_loss(model)
+        k = 50000
+        a = 2
+        train_loss1 = criterion1(outputs, X)
+        train_loss2 = criterion2(model)
+        train_loss3 = criterion3(model)
+        train_loss = (1/100)*train_loss1 + k*train_loss2 #+ a*train_loss3
+        # train_loss = train_loss1
+        # train_loss = k*dev_loss(model)
         train_loss.backward()
         optimizer.step()
         loss += train_loss.item()
 
-        if (epoch % update_weights) == 0:
-            model.round_weights()
-            outputs = model(X)
-            loss = criterion(outputs, X)
+        # print("epoch : {}/{}, loss = {:.6f}, p_loss = {:.6f}, n_loss = {:.6f}".format(epoch + 1, max_epochs, (loss), k*p_loss, k*n_loss))
+        print("epoch : {}/{}, loss = {:.6f}, MSE = {:.6f}, Dev = {:.6f}, SmWeight = {:.6f}".format(epoch + 1, max_epochs, (loss), train_loss1, train_loss2, train_loss3))
+        loss_writer.write("{},".format(loss))
 
-        # writer.add_scalar("Loss/train", loss, epoch)
+        # if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
+        #     break
+
+        if(train_loss1 < 100 and train_loss2 < 0.009):
+            break
+
+        # if (train_loss1 < 1):
+        #     break
+
+        if (loss < lr_shift):
+            lr = optimizer.param_groups[0]['lr']
+            optimizer.param_groups[0]['lr'] = 0.95 * lr
+            lr_shift = 0.9 * lr_shift
+
+    print(get_dist(model))
+    set_avg_weights(model)
+    # set_avg_weights_v2(model)
+    # set_avg_weights_v3(model)
+    # set_norm_weights(model)
+    # model.round_weights(m)
+    outputs = model(X)
+    loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+    print("\nloss = {:.6f}".format(loss.item()))
+
+    bp = 0
+
+    ## freeze decoder
+    model.freeze_decoder()
+
+    max_epochs *= 3
+    ## train encoder once more
+    for epoch in range(max_epochs):
+        model.train()
+        loss = 0
+        optimizer.zero_grad()
+        outputs = model(X)
+
+        train_loss = criterion1(outputs, X)
+        train_loss.backward()
+        optimizer.step()
+        loss += train_loss.item()
+
         print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
+        loss_writer.write("{},".format(loss))
 
         if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
             break
 
-        if(loss < lr_shift):
+        if (loss < lr_shift):
             lr = optimizer.param_groups[0]['lr']
-            optimizer.param_groups[0]['lr'] = 0.95*lr
-            lr_shift = 0.9*lr_shift
+            optimizer.param_groups[0]['lr'] = 0.95 * lr
+            lr_shift = 0.9 * lr_shift
 
-        # Check the accuracy after each epoch
-        #quantized_model = torch.quantization.convert(model.eval(), inplace=False)
-        #quantized_model.eval()
+    loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+    print("\nloss = {:.6f}".format(loss.item()))
 
-        #scheduler.step(math.floor(loss))
-        #scheduler.step()
+    data_writer.write("Final_Loss: {}\n".format(loss))
+    loss_writer.write("{}\n".format(loss))
+    data_writer.close()
+    loss_writer.close()
 
-    model.round_weights()
-
-    with torch.no_grad():
-        #outputs = model(X)
-        #outputs = torch.floor(outputs + 0.5)
-        loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
-        print("\nloss = {:.6f}".format(loss.item()))
-        outputs = model(X)
-        # loss = torch.sum(torch.abs(torch.floor((outputs*1000) + 0.5) - Xc))
-        # print("\nloss3 = {:.6f}".format(loss.item()))
-
-        ew2 = copy.deepcopy(model.encoder.input_layer.weight)
-        dw1b = copy.deepcopy(model.decoder.input_layer.weight)
-        dw2b = copy.deepcopy(model.decoder.output_layer.weight)
-        d1a = dw1b*128
-        d2a = dw2b*128
-        d1 = torch.floor(d1a+0.5)/128
-        d2 = torch.floor(d2a+0.5)/128
-
-        bp = 5
-        #print("\nOriginal Input:\n", X)
-        #print("\nOutput:\n",torch.floor(outputs + 0.5))
-
-        f = model.encoder(X)
-
-        D = copy.deepcopy(model.decoder)
-        D.input_layer.weight.data = d1
-        D.output_layer.weight.data = d2
-        Y = torch.floor(D(f) + 0.5)
-        Y2 = torch.floor(model.decoder(f) + 0.5)
-        loss2 = torch.sum(torch.abs(Y - X))
-        print("loss2 = {:.6f}".format(loss2.item()))
-
-    # torch.save(model, f'../runs/{tag}/saved_model.pth')
-    # writer.add_hparams({'epochs': max_epochs, 'update_weights': update_weights, 'lr_shift': lr_shift,
-    #                     'input_size': input_size, 'feature size': feature_size, 'decoder_init1': decoder_int1, 'scale': m},
-    #                    {'hparam/loss': loss})
-    # writer.add_graph(model, X)
-    # writer.close()
-
-    bp = 9
+    do_some_debug_stuff = 0
