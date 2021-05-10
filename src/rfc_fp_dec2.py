@@ -29,7 +29,7 @@ torch.set_printoptions(precision=10)
 max_epochs = 20000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 16
+io_size = 2000
 feature_size = 1
 decoder_int1 = 1
 
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     x_mean = math.floor(np.mean(x))
 
     # input into the decoder
-    F = torch.from_numpy(2048*np.ones((1, 1, 1, feature_size)).astype(np.float32)).to(device)
+    F = torch.from_numpy((2048*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
@@ -189,19 +189,21 @@ if __name__ == '__main__':
     def get_best_scale(scale, F, W, X, fp_min, fp_max):
 
         p = scale.shape[0]
-        w_s = W * scale
+        #w_s = W * scale
 
         f_loss = np.empty(0)
 
         for idx in range(0, p):
-            w_q = np.fmax(np.fmin(np.floor(w_s[idx, :]), fp_max*np.ones(W.size)), fp_min*np.ones(W.size))
+            w_s = W * scale[idx]
+            w_q = np.fmax(np.fmin(np.floor(w_s), fp_max*np.ones(W.shape)), fp_min*np.ones(W.shape))
             w_q = np.floor(w_q + 0.5)/scale[idx]
 
-            Y = np.floor((w_q * F) + 0.5)
+            Y = np.floor((w_q.transpose()*F).sum(axis=1) + 0.5)
             f_loss = np.append(f_loss, np.sum(np.abs(Y - X)))
 
         return f_loss
 
+    time.sleep(1)
 
     for fp_bits in range(8, 13):
 
@@ -235,13 +237,14 @@ if __name__ == '__main__':
         dw1a_q = torch.clamp_min(torch.clamp_max(torch.floor(dw1a * scale[0]), fp_max), fp_min)
         d1 = torch.floor(dw1a_q + 0.5)/scale[0]
 
-        Y = torch.floor(F*d1 + 0.5)
+        # Y = torch.floor((d1.t()*F).sum(axis=1) + 0.5)
+        Y = torch.floor(torch.sum(d1.t()*F, dim=1) + 0.5)
         # loss2 = torch.sum(torch.abs(Y - X))
 
         # print("loss2 = {:.2f}".format(loss2.item()))
 
         for idx in range(io_size):
-            data_wr.write("{}".format((Y.numpy())[0][idx]))
+            data_wr.write("{}".format((Y.numpy())[idx]))
             if(idx<io_size-1):
                 data_wr.write(", ")
             else:
