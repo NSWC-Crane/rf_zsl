@@ -110,6 +110,8 @@ for idx=1:num_tests
     
     x_nmae = sum(abs(x_diff))/numel(X);
     
+    x_stoi = stoi(X, X_hat, 10000);
+    
     tmp_x = min(data(:,1));
     if(tmp_x < min_x)
         min_x = tmp_x;
@@ -144,6 +146,8 @@ print(plot_num, '-dpng', fullfile(results_file_path, strcat('fp_results.png')));
 plot_num = plot_num + 1;  
 
 %% deal the the mins
+
+return;
 
 [min_d2, min_idx2] = min(min_data);
 
