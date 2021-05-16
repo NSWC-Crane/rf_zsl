@@ -33,10 +33,10 @@ end
 x           = x(:);                             % clean speech column vector
 y           = y(:);                             % processed speech column vector
 
-N_fft       = 2048;                             % FFT size
+N_fft       = 128;                             % FFT size
 N_frame    	= N_fft/2;                          % window support
 J           = 15;                               % Number of 1/3 octave bands - 15
-N           = 10;                               % Number of frames for intermediate intelligibility measure (Length analysis window)
+N           = 4;                               % Number of frames for intermediate intelligibility measure (Length analysis window)
 
 
 % remove silent frames
