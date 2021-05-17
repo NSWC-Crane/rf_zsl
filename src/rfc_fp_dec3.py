@@ -28,10 +28,10 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.set_printoptions(precision=10)
 
-max_epochs = 20000
+max_epochs = 10000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 100000
+io_size = 20000
 feature_size = 1
 decoder_int1 = 1
 
@@ -72,18 +72,18 @@ if __name__ == '__main__':
     data_bits = 12
     data_min = 0
     data_max = 2**data_bits
-    fp_bits = 6
+    fp_bits = 4
 
     # input into the decoder
     F = torch.from_numpy((1024*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
-    base_name = "lfm_test"
+    base_name = "sdr_test"
 
     # if(read_data == True):
     xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
     x_blocks = math.ceil(xd.size/io_size)
-    data_type = "real"
+    data_type = "sdr"
 
     date_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     scenario_name = "fs{:02d}-io{:03d}-".format(feature_size, io_size) + data_type
@@ -94,12 +94,12 @@ if __name__ == '__main__':
     # writer to save the data
     test_writer = open((log_dir + base_name + "_{:02d}-bits_".format(fp_bits) + "data.bin"), "wb")
 
-
     for idx in range(0,x_blocks*io_size, io_size):
         x = xd[idx:(idx + io_size)]
 
         # get the mean of x
         x_mean = math.floor(np.mean(x))
+        x_std = np.std(x)
 
         # convert x into a torch tensor variable
         X = torch.from_numpy(x).to(device)
