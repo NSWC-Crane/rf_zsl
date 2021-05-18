@@ -18,7 +18,7 @@ import datetime
 import pyswarms as ps
 from pyswarms.utils.functions import single_obj as fx
 
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 # import the network
 from zsl_decoder_v1 import Decoder
@@ -28,17 +28,17 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.set_printoptions(precision=10)
 
-max_epochs = 10000
+max_epochs = 30000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 20000
+io_size = 2**18
 feature_size = 1
 decoder_int1 = 1
 
 read_data = True
 
 # setup everything
-#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 model = Decoder(io_size, feature_size).to(device)
 
@@ -72,16 +72,19 @@ if __name__ == '__main__':
     data_bits = 12
     data_min = 0
     data_max = 2**data_bits
-    fp_bits = 4
+    fp_bits = 8
 
     # input into the decoder
-    F = torch.from_numpy((1024*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
+    F = torch.from_numpy((512*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
-    base_name = "sdr_test"
+    print("Loading data...\n")
+    # base_name = "sdr_test"
+    base_name = "VH1-164"
 
     # if(read_data == True):
-    xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    # xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
     x_blocks = math.ceil(xd.size/io_size)
     data_type = "sdr"
 
@@ -94,7 +97,8 @@ if __name__ == '__main__':
     # writer to save the data
     test_writer = open((log_dir + base_name + "_{:02d}-bits_".format(fp_bits) + "data.bin"), "wb")
 
-    for idx in range(0,x_blocks*io_size, io_size):
+    print("Processing...\n")
+    for idx in range(0, x_blocks*io_size, io_size):
         x = xd[idx:(idx + io_size)]
 
         # get the mean of x
@@ -103,7 +107,10 @@ if __name__ == '__main__':
 
         # convert x into a torch tensor variable
         X = torch.from_numpy(x).to(device)
-        X = X.view(-1, io_size)
+        X = X.view(-1, x.size)
+
+        if (x.size < io_size):
+            X = torch.nn.functional.pad(X, (0, io_size-x.size))
 
         # create a data logger to save info on the run
         # data_writer = open((log_dir + scenario_name + "_" + date_time + ".txt"), "w")
@@ -124,7 +131,7 @@ if __name__ == '__main__':
         # model must be set to train mode
         model.train()
 
-
+        print("block {:}".format(idx))
         for epoch in range(max_epochs):
             loss = 0
             optimizer.zero_grad()
@@ -144,7 +151,7 @@ if __name__ == '__main__':
             optimizer.step()
 
         loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
-        print("\nblock {:} loss = {:.6f}\n".format(idx, loss.item()))
+        print("loss = {:.6f}\n".format(loss.item()))
 
         # data_writer.write("#-------------------------------------------------------------------------------\n")
         # data_writer.write("# final_loss:\n{:.4f}\n\n".format(loss.item()))
@@ -203,10 +210,12 @@ if __name__ == '__main__':
         pso_opt = ps.single.GlobalBestPSO(n_particles=50, dimensions=1, options=pso_options, bounds=scale_bounds)
 
         # pso_opt.optimize(fx.sphere, iters=100)
-        cost, scale = pso_opt.optimize(get_best_scale, iters=150, F=F.numpy(), W=dw1a.numpy(), X=X.numpy(), fp_min=fp_min, fp_max=fp_max)
+        # cost, scale = pso_opt.optimize(get_best_scale, iters=150, F=F.numpy(), W=dw1a.numpy(), X=X.numpy(), fp_min=fp_min, fp_max=fp_max)
+        scale = [2**(fp_bits-2)]
+        cost = 0
 
         # time.sleep(1)
-        print("scale = {:0.6f}, loss = {:.2f}\n".format(scale[0], cost))
+        # print("scale = {:0.6f}, loss = {:.2f}\n".format(scale[0], cost))
 
         # data_wr.write("{:0.8f}, {}, ".format(scale[0], cost))
 
@@ -229,7 +238,8 @@ if __name__ == '__main__':
         # data_wr.close()
 
         # write the reconstructed data to a binary file
-        t2 = Y.numpy().reshape([io_size]).astype(np.int16)
+        t2 = (Y.numpy())[0:x.size]
+        t2 = t2.reshape([x.size]).astype(np.int16)
         test_writer.write(t2)
 
     test_writer.close()
