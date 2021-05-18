@@ -56,9 +56,14 @@ def get_best_scale(scale, F, W, X, fp_min, fp_max):
 
     for idx in range(0, p):
         w_s = W * scale[idx]
-        w_q = np.fmax(np.fmin(np.floor(np.abs(w_s)), fp_max*np.ones(W.shape)), fp_min*np.ones(W.shape))
 
-        w_q = np.copysign(w_q, w_s)/scale[idx]
+        # method 1
+        # w_q = np.fmax(np.fmin(np.floor(np.abs(w_s)), fp_max*np.ones(W.shape)), fp_min*np.ones(W.shape))
+        # w_q = np.copysign(w_q, w_s)/scale[idx]
+
+        # method 2
+        w_q = np.fmax(np.fmin(np.floor(w_s), fp_max * np.ones(W.shape)), fp_min * np.ones(W.shape))
+        w_q = np.floor(w_q + 0.5) / scale[idx]
 
         Y = np.floor((w_q.transpose()*F).sum(axis=1) + 0.5)
         f_loss = np.append(f_loss, np.sum(np.abs(Y - X)))
@@ -95,7 +100,7 @@ if __name__ == '__main__':
     os.makedirs(log_dir, exist_ok=True)
 
     # writer to save the data
-    test_writer = open((log_dir + base_name + "_{:02d}-bits_".format(fp_bits) + "data.bin"), "wb")
+    test_writer = open((log_dir + base_name + "_{:02d}-bits_M2_".format(fp_bits) + "data.bin"), "wb")
 
     print("Processing...\n")
     for idx in range(0, x_blocks*io_size, io_size):
