@@ -18,7 +18,7 @@ import datetime
 import pyswarms as ps
 from pyswarms.utils.functions import single_obj as fx
 
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 
 ###torch.manual_seed(42)
@@ -92,8 +92,8 @@ if __name__ == '__main__':
     idx = 0
     rng = np.random.default_rng(10)
     data_bits = 12
-    data_min = 0
-    data_max = 2**data_bits
+    data_min = -950
+    data_max = 955
 
     if(read_data == True):
         x = np.fromfile("../data/lfm_test_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     x_mean = math.floor(np.mean(x))
 
     # input into the decoder
-    F = torch.from_numpy((2048*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
+    F = torch.from_numpy((1024*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     # convert x into a torch tensor variable
@@ -205,7 +205,7 @@ if __name__ == '__main__':
 
     time.sleep(1)
 
-    for fp_bits in range(8, 13):
+    for fp_bits in range(4, 8):
 
         fp_range = 2**fp_bits      # the max value
 

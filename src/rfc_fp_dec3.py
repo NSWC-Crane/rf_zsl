@@ -46,7 +46,7 @@ model = Decoder(io_size, feature_size).to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 criterion = nn.MSELoss()
 
-# create a parameterized version of the classic Rosenbrock unconstrained optimzation function
+# create a parameterized version of the unconstrained optimization function
 def get_best_scale(scale, F, W, X, fp_min, fp_max):
 
     p = scale.shape[0]
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     data_bits = 12
     data_min = 0
     data_max = 2**data_bits
-    fp_bits = 8
+    fp_bits = 2
 
     # input into the decoder
     F = torch.from_numpy((512*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
@@ -100,7 +100,7 @@ if __name__ == '__main__':
     os.makedirs(log_dir, exist_ok=True)
 
     # writer to save the data
-    test_writer = open((log_dir + base_name + "_{:02d}-bits_M2_".format(fp_bits) + "data.bin"), "wb")
+    test_writer = open((log_dir + base_name + "_{:02d}-bits_M3_".format(fp_bits) + "data.bin"), "wb")
 
     print("Processing...\n")
     for idx in range(0, x_blocks*io_size, io_size):
@@ -212,15 +212,11 @@ if __name__ == '__main__':
 
         # data_wr = open((log_dir + scenario_name + "_{:02d}-bits_".format(fp_bits) + date_time + ".txt"), "w")
 
-        pso_opt = ps.single.GlobalBestPSO(n_particles=50, dimensions=1, options=pso_options, bounds=scale_bounds)
+        pso_opt = ps.single.GlobalBestPSO(n_particles=40, dimensions=1, options=pso_options, bounds=scale_bounds)
 
         # pso_opt.optimize(fx.sphere, iters=100)
-        # cost, scale = pso_opt.optimize(get_best_scale, iters=150, F=F.numpy(), W=dw1a.numpy(), X=X.numpy(), fp_min=fp_min, fp_max=fp_max)
-        scale = [2**(fp_bits-2)]
-        cost = 0
-
-        # time.sleep(1)
-        # print("scale = {:0.6f}, loss = {:.2f}\n".format(scale[0], cost))
+        # cost, scale = pso_opt.optimize(get_best_scale, iters=50, F=F.numpy(), W=dw1a.numpy(), X=X.numpy(), fp_min=fp_min, fp_max=fp_max)
+        scale = [1.25]
 
         # data_wr.write("{:0.8f}, {}, ".format(scale[0], cost))
 
@@ -229,9 +225,9 @@ if __name__ == '__main__':
 
         # Y = torch.floor((d1.t()*F).sum(axis=1) + 0.5)
         Y = torch.floor(torch.sum(d1.t()*F, dim=1) + 0.5)
-        # loss2 = torch.sum(torch.abs(Y - X))
+        loss2 = torch.sum(torch.abs(Y - X))/X.shape[1]
 
-        # print("loss2 = {:.2f}".format(loss2.item()))
+        print("scale = {:0.6f}, loss = {:.2f}\n".format(scale[0], loss2.item()))
 
         # for idx in range(io_size):
         #     data_wr.write("{}".format((Y.numpy())[idx]))
