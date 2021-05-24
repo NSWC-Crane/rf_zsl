@@ -4,8 +4,7 @@ import copy
 import numpy as np
 import torch
 import torch.nn as nn
-
-# import parameters for model
+from sklearn.cluster import KMeans
 from params import *
 
 
@@ -122,35 +121,23 @@ def get_dist(model):
     return l
 
 
-# class DevLoss(nn.Module):
-#
-#     def __init__(self):
-#         super(DevLoss, self).__init__()
-#
-#     def forward(self, model):
-#         # p_loss = torch.Tensor(1)
-#         # p_loss.requires_grad = True
-#         # n_loss = torch.Tensor(1)
-#         # n_loss.requires_grad = True
-#
-#         p_loss = 0
-#         n_loss = 0
-#
-#         for param in model.decoder.parameters():
-#             data = param.data
-#
-#             t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
-#             t1 = t1 * data
-#             p_loss += torch.std(t1)
-#
-#             t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
-#             t2 = t2 * data
-#             n_loss += torch.std(t2)
-#
-#         total_loss = p_loss + n_loss
-#         # return (p_loss, n_loss)
-#         return total_loss
+def cluster_weights(model, n_clusters=2):
 
+    for param in model.decoder.parameters():
+        data = param.detach().numpy()
+        data = data.reshape(-1, 1)
+        kmeans = KMeans(n_clusters=n_clusters).fit(data)
+
+        for cluster in range(n_clusters):
+            t1 = np.float32(kmeans.labels_ == cluster).reshape(-1, 1)
+            t2 = 1-t1
+
+            data = data*t2
+            t1 = t1 * kmeans.cluster_centers_[cluster]
+            data += t1
+
+        param.data = nn.Parameter(torch.from_numpy(data.reshape(param.shape)))
+        bp = 0
 
 
 class DevLoss(nn.Module):
@@ -159,11 +146,6 @@ class DevLoss(nn.Module):
         super(DevLoss, self).__init__()
 
     def forward(self, model):
-        # p_loss = torch.Tensor(1)
-        # p_loss.requires_grad = True
-        # n_loss = torch.Tensor(1)
-        # n_loss.requires_grad = True
-
         p_loss = 0
         n_loss = 0
 

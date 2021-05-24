@@ -29,12 +29,12 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, output_size, feature_size):
         super().__init__()
-        self.input_layer = nn.Linear(feature_size, 2048, bias=False)
+        self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
         # self.hidden_layer_1 = nn.Linear(decoder_int1, 128, bias=False)
         # self.hidden_layer_2 = nn.Linear(128, 128, bias=False)
         # self.hidden_layer_3 = nn.Linear(512, 1024, bias=False)
         # self.hidden_layer_4 = nn.Linear(1024, 2048, bias=False)
-        self.output_layer = nn.Linear(2048, output_size, bias=False)
+        self.output_layer = nn.Linear(decoder_int1, output_size, bias=False)
 
     def forward(self, activation):
         activation = self.input_layer(activation)

@@ -9,6 +9,8 @@ import math
 import numpy as np
 import datetime
 import os
+# import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 
 from model import AE
 from params import *
@@ -97,22 +99,23 @@ if __name__ == '__main__':
         train_loss1 = criterion1(outputs, X)
         train_loss2 = criterion2(model)
         train_loss3 = criterion3(model)
-        train_loss = (1/100)*train_loss1 + k*train_loss2 #+ a*train_loss3
+        train_loss = train_loss1
         # train_loss = train_loss1
         # train_loss = k*dev_loss(model)
         train_loss.backward()
         optimizer.step()
         loss += train_loss.item()
 
+        print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, (loss)))
         # print("epoch : {}/{}, loss = {:.6f}, p_loss = {:.6f}, n_loss = {:.6f}".format(epoch + 1, max_epochs, (loss), k*p_loss, k*n_loss))
-        print("epoch : {}/{}, loss = {:.6f}, MSE = {:.6f}, Dev = {:.6f}, SmWeight = {:.6f}".format(epoch + 1, max_epochs, (loss), train_loss1, train_loss2, train_loss3))
+        # print("epoch : {}/{}, loss = {:.6f}, MSE = {:.6f}, Dev = {:.6f}, SmWeight = {:.6f}".format(epoch + 1, max_epochs, (loss), train_loss1, train_loss2, train_loss3))
         loss_writer.write("{},".format(loss))
 
-        # if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
-        #     break
-
-        if(train_loss1 < 100 and train_loss2 < 0.009):
+        if (torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1):
             break
+
+        # if(train_loss1 < 100 and train_loss2 < 0.009):
+        #     break
 
         # if (train_loss1 < 1):
         #     break
@@ -122,20 +125,21 @@ if __name__ == '__main__':
             optimizer.param_groups[0]['lr'] = 0.95 * lr
             lr_shift = 0.9 * lr_shift
 
+
     print(get_dist(model))
-    set_avg_weights(model)
-    # set_avg_weights_v2(model)
-    # set_avg_weights_v3(model)
-    # set_norm_weights(model)
-    # model.round_weights(m)
+    cluster_weights(model, 4)
     outputs = model(X)
     loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
     print("\nloss = {:.6f}".format(loss.item()))
 
     bp = 0
 
+    optimizer = optim.Adam(model.parameters(), lr=5e-3)
+
     ## freeze decoder
     model.freeze_decoder()
+
+    # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=5e-3)
 
     max_epochs *= 3
     ## train encoder once more
@@ -168,5 +172,12 @@ if __name__ == '__main__':
     loss_writer.write("{}\n".format(loss))
     data_writer.close()
     loss_writer.close()
+
+    do_some_debug_stuff = 0
+
+    set_avg_weights(model)
+    outputs = model(X)
+    loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+    print("\nloss = {:.6f}".format(loss.item()))
 
     do_some_debug_stuff = 0
