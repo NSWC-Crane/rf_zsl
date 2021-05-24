@@ -21,63 +21,55 @@ def init_weights(model):
             ew1 = copy.deepcopy(param)
 
 
-def set_avg_weights(model):
-    for param in model.decoder.parameters():
-        data = param.data
+def set_avg_weights(model, mode=2):
+    with torch.no_grad():
+        for param in model.decoder.parameters():
+            data = param.data
 
-        t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
-        p_avg = torch.sum(t1 * data) / torch.sum(t1)
-        t1 = t1 * p_avg
+            if mode == 0:
+                r, c = param.size()
 
-        t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
-        n_avg = torch.sum(t2 * data) / torch.sum(t2)
-        t2 = t2 * n_avg
+                t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
+                p_avg = torch.sum(t1 * data, 0) / torch.sum(t1, 0)
+                p_avg = p_avg.view(-1, 1).repeat(r, 1).view(r, c)
+                t1 = t1 * p_avg
 
-        param.data = (t1 + t2)
+                t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
+                n_avg = torch.sum(t2 * data, 0) / torch.sum(t2, 0)
+                n_avg = n_avg.view(-1, 1).repeat(r, 1).view(r, c)
+                t2 = t2 * n_avg
 
-        bp = 0
+                param.data = (t1 + t2)
 
+                bp = 0
+            elif mode == 1:
+                r, c = param.size()
 
-def set_avg_weights_v2(model):
-    for param in model.decoder.parameters():
-        data = param.data
+                t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
+                p_avg = torch.sum(t1 * data, 1) / torch.sum(t1, 1)
+                p_avg = p_avg.view(-1, 1).repeat(1, c).view(r, c)
+                t1 = t1 * p_avg
 
-        r, c = param.size()
+                t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
+                n_avg = torch.sum(t2 * data, 1) / torch.sum(t2, 1)
+                n_avg = n_avg.view(-1, 1).repeat(1, c).view(r, c)
+                t2 = t2 * n_avg
 
-        t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
-        p_avg = torch.sum(t1 * data, 1) / torch.sum(t1, 1)
-        p_avg = p_avg.view(-1, 1).repeat(1, c).view(r, c)
-        t1 = t1 * p_avg
+                param.data = (t1 + t2)
 
-        t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
-        n_avg = torch.sum(t2 * data, 1) / torch.sum(t2, 1)
-        n_avg = n_avg.view(-1, 1).repeat(1, c).view(r, c)
-        t2 = t2 * n_avg
+                bp = 0
+            elif mode == 2:
+                t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
+                p_avg = torch.sum(t1 * data) / torch.sum(t1)
+                t1 = t1 * p_avg
 
-        param.data = (t1 + t2)
+                t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
+                n_avg = torch.sum(t2 * data) / torch.sum(t2)
+                t2 = t2 * n_avg
 
-        bp = 0
-
-
-def set_avg_weights_v3(model):
-    for param in model.decoder.parameters():
-        data = param.data
-
-        r, c = param.size()
-
-        t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
-        p_avg = torch.sum(t1 * data, 0) / torch.sum(t1, 0)
-        p_avg = p_avg.view(-1, 1).repeat(r, 1).view(r, c)
-        t1 = t1 * p_avg
-
-        t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
-        n_avg = torch.sum(t2 * data, 0) / torch.sum(t2, 0)
-        n_avg = n_avg.view(-1, 1).repeat(r, 1).view(r, c)
-        t2 = t2 * n_avg
-
-        param.data = (t1 + t2)
-
-        bp = 0
+                param.data = (t1 + t2)
+            else:
+                print(f'Mode = ({mode}) is an invalid mode')
 
 
 def set_norm_weights(model):
