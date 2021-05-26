@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.cluster import KMeans
-from params import *
 
 
 def init_weights(model):
@@ -167,8 +166,9 @@ class DevLoss(nn.Module):
 
 class MeanLoss(nn.Module):
 
-    def __init__(self):
+    def __init__(self, m):
         super(MeanLoss, self).__init__()
+        self.m = m
 
     def forward(self, model):
         p_loss = 0
@@ -178,21 +178,21 @@ class MeanLoss(nn.Module):
 
         t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
         t1 = t1 * data
-        p_loss += torch.abs(torch.mean(t1)-(1/m))
+        p_loss += torch.abs(torch.mean(t1)-(1/self.m))
 
         t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
         t2 = t2 * data
-        n_loss += torch.abs(torch.mean(t2)-(1/m))
+        n_loss += torch.abs(torch.mean(t2)-(1/self.m))
 
         data = model.decoder.output_layer.weight
 
         t1 = nn.Parameter(torch.from_numpy(np.float32(data > 0)))
         t1 = t1 * data
-        p_loss += torch.abs(torch.mean(t1)-(1/m))
+        p_loss += torch.abs(torch.mean(t1)-(1/self.m))
 
         t2 = nn.Parameter(torch.from_numpy(np.float32(data < 0)))
         t2 = t2 * data
-        n_loss += torch.abs(torch.mean(t2)-(1/m))
+        n_loss += torch.abs(torch.mean(t2)-(1/self.m))
 
         total_loss = p_loss + n_loss
         return total_loss
@@ -230,3 +230,17 @@ class SmallWeightLoss(nn.Module):
         total_loss = p_loss + (-1*n_loss)
         return total_loss
 
+
+def get_feature_size(in_size):
+    return [int(in_size/1.2), int(in_size/2), int(in_size/3),
+            int(in_size/4), int(in_size/5), int(in_size/6)]
+
+
+def get_n_cluster(fs):
+    return [int(fs / 2), int(fs / 3),
+            int(fs / 4), int(fs / 5), int(fs / 6)]
+
+
+def get_d_init(fs):
+    return [int(fs * 1.5),
+            int(fs * 2), int(fs * 4)]

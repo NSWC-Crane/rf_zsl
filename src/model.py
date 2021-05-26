@@ -2,9 +2,6 @@
 import torch
 import torch.nn as nn
 
-# import parameters for model
-from params import *
-
 
 # create the encoder class
 class Encoder(nn.Module):
@@ -27,7 +24,7 @@ class Encoder(nn.Module):
 
 # create the decoder class
 class Decoder(nn.Module):
-    def __init__(self, output_size, feature_size):
+    def __init__(self, output_size, feature_size, decoder_int1):
         super().__init__()
         self.input_layer = nn.Linear(feature_size, decoder_int1, bias=False)
         # self.hidden_layer_1 = nn.Linear(decoder_int1, 128, bias=False)
@@ -48,10 +45,10 @@ class Decoder(nn.Module):
 
 # use the encoder and decoder classes to build the autoencoder
 class AE(nn.Module):
-    def __init__(self, input_size, feature_size):
+    def __init__(self, input_size, feature_size, decoder_int1):
         super().__init__()
         self.encoder = Encoder(input_size, feature_size)
-        self.decoder = Decoder(input_size, feature_size)
+        self.decoder = Decoder(input_size, feature_size, decoder_int1)
 
     def forward(self, features):
         code = self.encoder(features)
