@@ -22,6 +22,7 @@ from pyswarms.utils.functions import single_obj as fx
 
 # import the network
 from zsl_decoder_v1 import Decoder
+from zsl_error_metric import zsl_error_metric
 
 ###torch.manual_seed(42)
 torch.backends.cudnn.deterministic = True
@@ -31,7 +32,7 @@ torch.set_printoptions(precision=10)
 max_epochs = 30000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 2**18
+io_size = 65536
 feature_size = 1
 decoder_int1 = 1
 
@@ -46,6 +47,13 @@ model = Decoder(io_size, feature_size).to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 criterion = nn.MSELoss()
 
+def quantize_weights(W, scale):
+    w_s = W * scale
+    w_q = np.fmax(np.fmin(np.floor(w_s), fp_max * np.ones(W.shape)), fp_min * np.ones(W.shape))
+    w_q = w_q / scale
+
+    return w_q
+
 # create a parameterized version of the unconstrained optimization function
 def get_best_scale(scale, F, W, X, fp_min, fp_max):
 
@@ -55,15 +63,17 @@ def get_best_scale(scale, F, W, X, fp_min, fp_max):
     f_loss = np.empty(0)
 
     for idx in range(0, p):
-        w_s = W * scale[idx]
+        # w_s = W * scale[idx]
 
         # method 1
-        # w_q = np.fmax(np.fmin(np.floor(np.abs(w_s)), fp_max*np.ones(W.shape)), fp_min*np.ones(W.shape))
-        # w_q = np.copysign(w_q, w_s)/scale[idx]
+        # w_q1 = np.fmax(np.fmin(np.floor(np.abs(w_s) + 0.5), fp_max*np.ones(W.shape)), fp_min*np.ones(W.shape))
+        # w_q1 = np.copysign(w_q1, w_s)/scale[idx]
 
         # method 2
-        w_q = np.fmax(np.fmin(np.floor(w_s), fp_max * np.ones(W.shape)), fp_min * np.ones(W.shape))
-        w_q = np.floor(w_q + 0.5) / scale[idx]
+        # w_q = np.fmax(np.fmin(np.floor(w_s + 0.5), fp_max * np.ones(W.shape)), fp_min * np.ones(W.shape))
+        # w_q = w_q / scale[idx]
+
+        w_q = quantize_weights(W, scale[idx])
 
         Y = np.floor((w_q.transpose()*F).sum(axis=1) + 0.5)
         f_loss = np.append(f_loss, np.sum(np.abs(Y - X)))
@@ -77,19 +87,20 @@ if __name__ == '__main__':
     data_bits = 12
     data_min = 0
     data_max = 2**data_bits
-    fp_bits = 2
+    fp_bits = 4
 
     # input into the decoder
-    F = torch.from_numpy((512*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
+    F = torch.from_numpy((2048*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     print("Loading data...\n")
-    # base_name = "sdr_test"
-    base_name = "VH1-164"
 
-    # if(read_data == True):
-    # xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
-    xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    base_name = "sdr_test"
+    xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+
+    # base_name = "VH1-164"
+    # xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+
     x_blocks = math.ceil(xd.size/io_size)
     data_type = "sdr"
 
@@ -203,9 +214,11 @@ if __name__ == '__main__':
 
         scale_step = 0.005
 
-        min_scale = math.floor(fp_range * 0.25)
-        max_scale = (fp_range * 0.625) + scale_step
-        min_loss = 1e10
+        # min_scale = math.floor(fp_range * 0.25)
+        # max_scale = (fp_range * 0.625) + scale_step
+        # min_loss = 1e10
+        min_scale = (2**(fp_bits-2)) *0.625
+        max_scale = (fp_range * 1.1) + scale_step
 
         # scale_bounds = [min_scale, max_scale]
         scale_bounds = (min_scale*np.ones(1), max_scale*np.ones(1))
@@ -216,18 +229,21 @@ if __name__ == '__main__':
 
         # pso_opt.optimize(fx.sphere, iters=100)
         # cost, scale = pso_opt.optimize(get_best_scale, iters=50, F=F.numpy(), W=dw1a.numpy(), X=X.numpy(), fp_min=fp_min, fp_max=fp_max)
-        scale = [1.25]
+        scale = [8.0]
 
         # data_wr.write("{:0.8f}, {}, ".format(scale[0], cost))
 
         dw1a_q = torch.clamp_min(torch.clamp_max(torch.floor(torch.abs(dw1a * scale[0])), fp_max), fp_min)
         d1 = (torch.sign(dw1a)*dw1a_q)/scale[0]
 
+        w_q = quantize_weights(dw1a.numpy(), scale[0])
+
+
         # Y = torch.floor((d1.t()*F).sum(axis=1) + 0.5)
-        Y = torch.floor(torch.sum(d1.t()*F, dim=1) + 0.5)
+        Y = torch.floor(torch.sum(torch.from_numpy(w_q).t()*F, dim=1) + 0.5)
         loss2 = torch.sum(torch.abs(Y - X))/X.shape[1]
 
-        print("scale = {:0.6f}, loss = {:.2f}\n".format(scale[0], loss2.item()))
+        print("scale = {:0.6f}, loss = {:.2f}".format(scale[0], loss2.item()))
 
         # for idx in range(io_size):
         #     data_wr.write("{}".format((Y.numpy())[idx]))
@@ -237,6 +253,10 @@ if __name__ == '__main__':
         #         data_wr.write("\n")
         #
         # data_wr.close()
+
+        dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(X.numpy(), Y.numpy())
+
+        print("dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}".format(dist_mean, dist_std, phase_mean, phase_std))
 
         # write the reconstructed data to a binary file
         t2 = (Y.numpy())[0:x.size]
