@@ -16,8 +16,14 @@ def zsl_error_metric(x, y):
 
     Returns
     -------
-    tuple
-        the global best cost and the global best position.
+    dist_mean : float64
+        mean of the complex distance between points within x and y
+    dist_std : float64
+        standard deviation of the complex distance between points within x and y
+    phase_mean : float64
+        mean of the phase angle between points within x and y
+    phase_std : float64
+        standard deviation of the complex distance between points within x and y
     """
     # convert x into a complex numpy array
     x = x.reshape(-1, 2)
