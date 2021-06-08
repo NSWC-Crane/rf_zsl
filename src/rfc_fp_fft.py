@@ -133,13 +133,13 @@ if __name__ == '__main__':
         x_fft = np.fft.fft(xc)/xc.size
 
         # the FFT version that has been packed into real, imag, real, imag,...
-        x_f = np.zeros([fft_size], dtype=np.float32)
-        x_f[0:fft_size:2] = x_fft.real
-        x_f[1:fft_size:2] = x_fft.imag
-        x_f = np.floor(x_f + 0.5)
+        x_f = np.zeros([xc.size], dtype=np.float32)
+        x_f[0:xc.size:2] = x_fft.real
+        x_f[1:xc.size:2] = x_fft.imag
+        # x_f = np.floor(x_f + 0.5)
 
         # container for the reconstructed
-        x_r = np.zeros([fft_size], dtype=np.float32)
+        x_r = np.zeros([xc.size], dtype=np.float32)
 
         print("Processing...\n")
         for idx in range(0, fft_size, io_size):
@@ -176,15 +176,15 @@ if __name__ == '__main__':
 
                 # loss_q = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
                 loss_q = torch.sum(torch.abs(outputs - X))
-                if (loss_q < 1):
+                if (loss_q < 0.01):
                     bp = 10
                     break
 
                 train_loss.backward()
                 optimizer.step()
 
-            loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
-            print("loss = {:.6f}\n".format(loss.item()))
+            # loss = torch.sum(torch.abs(torch.floor(outputs + 0.5) - X))
+            print("loss = {:.6f}\n".format(loss_q.item()))
 
             # data_writer.write("#-------------------------------------------------------------------------------\n")
             # data_writer.write("# final_loss:\n{:.4f}\n\n".format(loss.item()))
@@ -273,7 +273,10 @@ if __name__ == '__main__':
             # data_wr.close()
 
             # copy Y into x_r
-            x_r[idx:(idx + io_size)] = np.floor(Y.numpy() + 0.5)
+            # x_r[idx:(idx + io_size)] = np.floor(Y.numpy() + 0.5)
+            x_r[idx:(idx + io_size)] = Y.numpy()
+
+            bp = 1
 
         # end of for idx in range(0, fft_size, math.ceil(fft_size/io_size))
 
