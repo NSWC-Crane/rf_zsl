@@ -86,18 +86,19 @@ if __name__ == '__main__':
     idx = 0
     rng = np.random.default_rng(10)
     data_bits = 12
-    data_min = 0
-    data_max = 2**data_bits
+    data_min = -(2**(data_bits-1))
+    data_max = 2**(data_bits-1) - 1
     fp_bits = 4
 
     # input into the decoder
-    F = torch.from_numpy((2048*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
+    F = torch.from_numpy((2048*np.ones((1, feature_size))).astype(np.float32)).to(device)
     F = F.view(-1, feature_size)
 
     print("Loading data...\n")
 
     base_name = "sdr_test"
     xd = np.fromfile("../data/" + base_name + "_10M_100m_0000.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    # xd = rng.integers(data_min, data_max, size=(math.floor(fft_size+256)), dtype=np.int16, endpoint=False).astype(np.float32)
 
     # base_name = "VH1-164"
     # xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
@@ -118,31 +119,34 @@ if __name__ == '__main__':
         print("Processing FFT block {:d}".format(fft_blk))
         x = xd[fft_blk:(fft_blk + fft_size)]
 
+        if (x.size < io_size):
+            x = np.pad(x, (0, io_size-x.size), 'constant')
+
         # get the mean of x
         x_mean = math.floor(np.mean(x))
         x_std = np.std(x)
 
         # convert x into a complex numpy array
-        x = x.reshape(-1, 2)
+        x2 = x.reshape(-1, 2)
 
-        xc = np.empty(x.shape[0], dtype=complex)
-        xc.real = x[:, 0]
-        xc.imag = x[:, 1]
+        xc = np.empty(x2.shape[0], dtype=complex)
+        xc.real = x2[:, 0]
+        xc.imag = x2[:, 1]
 
         # take the FFT of the block
         x_fft = np.fft.fft(xc)/xc.size
 
         # the FFT version that has been packed into real, imag, real, imag,...
-        x_f = np.zeros([xc.size], dtype=np.float32)
-        x_f[0:xc.size:2] = x_fft.real
-        x_f[1:xc.size:2] = x_fft.imag
+        x_f = np.zeros([x.size], dtype=np.float32)
+        x_f[0:x.size:2] = x_fft.real
+        x_f[1:x.size:2] = x_fft.imag
         # x_f = np.floor(x_f + 0.5)
 
         # container for the reconstructed
-        x_r = np.zeros([xc.size], dtype=np.float32)
+        x_r = np.zeros([x.size], dtype=np.float32)
 
         print("Processing...\n")
-        for idx in range(0, fft_size, io_size):
+        for idx in range(0, x_f.size, io_size):
             xs = x_f[idx:(idx + io_size)]
 
             # get the mean of x
@@ -150,15 +154,15 @@ if __name__ == '__main__':
             x_std = np.std(xs)
             x_max = np.max(np.abs(xs))
 
-            F = torch.from_numpy((x_max*np.ones((1, 1, 1, feature_size))).astype(np.float32)).to(device)
-            F = F.view(-1, feature_size)
+            F = torch.from_numpy((x_max*np.ones((1, feature_size))).astype(np.float32)).to(device)
+            # F = F.view(-1, feature_size)
 
             # convert x into a torch tensor variable
             X = torch.from_numpy(xs).to(device)
             X = X.view(-1, xs.size)
 
-            if (xs.size < io_size):
-                X = torch.nn.functional.pad(X, (0, io_size-xs.size))
+            # if (xs.size < io_size):
+            #     X = torch.nn.functional.pad(X, (0, io_size-xs.size))
 
             # model must be set to train mode
             model.train()
@@ -282,14 +286,14 @@ if __name__ == '__main__':
 
         # convert the x_r back into the original samples by taking the ifft
         xr_fft = np.empty(xc.size, dtype=complex)
-        xr_fft.real = x_r[0:fft_size:2]
-        xr_fft.imag = x_r[1:fft_size:2]
+        xr_fft.real = x_r[0:x_r.size:2]
+        xr_fft.imag = x_r[1:x_r.size:2]
 
         x_i = np.fft.ifft(xr_fft*xr_fft.size)
 
-        y = np.zeros([fft_size], dtype=np.float32)
-        y[0:fft_size:2] = np.floor(x_i.real + 0.5)
-        y[1:fft_size:2] = np.floor(x_i.imag + 0.5)
+        y = np.zeros([x_f.size], dtype=np.float32)
+        y[0:x_f.size:2] = np.floor(x_i.real + 0.5)
+        y[1:x_f.size:2] = np.floor(x_i.imag + 0.5)
 
         x = x.reshape(-1)
         dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(x, y)
