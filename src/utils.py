@@ -6,6 +6,8 @@ import torch
 import torch.nn as nn
 from sklearn.cluster import KMeans
 
+device = "cpu"
+
 
 def init_weights(model):
     # use something like this to manually set the weights.  use the no_grad() to prevent tracking of gradient changes
