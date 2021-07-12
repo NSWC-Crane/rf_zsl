@@ -10,3 +10,4 @@ i use this file for testing parameters / changes
 
 -------------------------------
 still need to add error metrics
+will need to check into frozen decoder , was testing this with clustering_tensorflow.py
