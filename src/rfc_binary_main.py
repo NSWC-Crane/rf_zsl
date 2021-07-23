@@ -11,6 +11,7 @@ import os
 
 from zsl_error_metric import *
 from utils import *
+from zsl_clustering import *
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
 input_size = 1024
@@ -115,7 +116,7 @@ if __name__ == '__main__':
     # model.train()
     lr_shift = 1.0
 
-    for n_clusters in [*range(1, 3), *range(10, num_clusters_max+num_clusters_step, num_clusters_step)]:
+    for n_clusters in [100, 200]:
         if read_data == True:
             x = np.fromfile("../data/" + data_file + ".bin", dtype=np.int16, count=-1, sep='',
                             offset=0).astype(np.float32)
@@ -205,12 +206,13 @@ if __name__ == '__main__':
             optimizer.step()
             loss = train_loss.item()
 
-            print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, loss))
+            [dist_mean, dist_std, phase_mean, phase_std] = zsl_error_metric(X, outputs.detach().numpy())
+            print("epoch: {}/{}, loss = [{:.6f}, {:.6f},{:.6f},{:.6f},{:.6f}]"
+                  .format(epoch + 1, max_epochs, loss, dist_mean, dist_std, phase_mean, phase_std))
 
             if loss < best_mse_loss:
                 best_mse_loss = loss
                 final_zsl_metric = zsl_error_metric(X, outputs.detach().numpy())
-                torch.save(model.state_dict(), "../nets/" + data_file + "_" + scenario_name + "_" + date_time + ".pth")
 
             if torch.sum(torch.abs(torch.floor(outputs + 0.5) - X)) < 1:
                 break
