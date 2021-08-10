@@ -15,7 +15,7 @@ from zsl_clustering import *
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
 input_size = 1024
-max_epochs = 10000
+max_epochs = 500
 feature_size = 1
 
 num_clusters_max = 50
@@ -178,7 +178,7 @@ if __name__ == '__main__':
 
         # ------------------------------------------------------------------------------
         # reassign each weight based on its nearest cluster center
-        cluster_weights(model, n_clusters)
+        labels, centers = cluster_weights(model, n_clusters)
         optimizer = optim.Adam(model.parameters(), lr=5e-3)
         model.freeze_decoder()
 
@@ -227,6 +227,44 @@ if __name__ == '__main__':
         data_writer.close()
 
         bp = 0
+
+        # ------------------------------------------------------------------------------
+        weights_writer = open((log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin"), "wb")
+        model_weights = model.decoder.input_layer.weight.detach().numpy()
+        weights_writer.write(model_weights.astype(np.float32))
+        weights_writer.close()
+
+        read_weights = np.fromfile(log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin",
+                                   dtype=np.float32, count=-1, sep='', offset=0).astype(np.float32)
+
+        label_writer = open((log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin"), "wb")
+        label_writer.write(labels.astype(np.uint8))
+        label_writer.close()
+
+        read_labels = np.fromfile(log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin",
+                                  dtype=np.uint8, count=-1, sep='', offset=0).astype(np.float32)
+
+        new_model = AE(input_size, feature_size)
+        new_model.encoder = model.encoder
+        # new_model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(read_labels.reshape(model.decoder.input_layer.weight.shape)))
+
+        read_labels = read_labels.reshape(-1, 1)
+        # reassign labels to their center value
+        for cluster in range(n_clusters):
+            t1 = np.float32(read_labels == cluster).reshape(-1, 1)
+            t2 = 1 - t1
+
+            read_labels = read_labels * t2
+            t1 = t1 * centers[cluster]
+            read_labels += t1
+
+        read_labels = read_labels.astype(np.float32)
+        read_labels = nn.Parameter(torch.from_numpy(read_labels.reshape(model.decoder.input_layer.weight.shape)))
+        new_model.decoder.input_layer.weight = read_labels
+
+        new_outputs = new_model(X)
+
+        print(f'Reconstruction Loss: {criterion(new_outputs, X).item()}')
 
     bp = 0
 
