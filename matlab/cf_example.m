@@ -27,19 +27,29 @@ iq_int = iq(:);
 %% try curve fitting
 
 iq_start = 50000;
-io_size = 128;
+io_size = 36;
 
-iq_slice = iq_int(iq_start:io_size+iq_start-1);
+iq_slice = iq_int(iq_start:io_size+iq_start-1)/2048;
 cx = (0:1:io_size-1)';
 
-cf = fit(cx, iq_slice, 'sin3');
+[cf, cf_metrics] = fit(cx, iq_slice, 'sin3');
+% re = floor(cf(cx)+0.5);
+re = cf(cx);
 
+
+fprintf('Curve Fit:\n');
+disp(cf);
+
+fprintf('\nFit Metrics:\n');
+disp(cf_metrics);
 
 
 plot(cf, cx, iq_slice)
 
-cf
+hold on
+plot(cx, re, 'g')
 
+% calculate the ratio (num coeff / iosize) * (coeff bits / data bits)
+ratio = (numel(coeffvalues(cf))/io_size)*(32/16);
 
-
-
+fprintf('\nRatio: %10.7f\n', ratio);
