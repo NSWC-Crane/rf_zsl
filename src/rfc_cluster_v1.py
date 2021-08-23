@@ -17,7 +17,15 @@ import datetime
 
 from sklearn.cluster import KMeans
 
+import pyswarms as ps
+
 # from torch.utils.tensorboard import SummaryWriter
+
+# import matplotlib to plot things
+from matplotlib import pyplot as plt
+
+# scipy curve fitting
+from scipy.optimize import curve_fit, fmin_bfgs
 
 # import the network
 from zsl_decoder_v1 import Decoder, Encoder, AE
@@ -28,27 +36,63 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.set_printoptions(precision=10)
 
+
+def r_squared(x, y):
+    y_m = np.mean(y)
+
+    r2 = 1 - (np.sum((y-x)*(y-x)) / np.sum((y-y_m)*(y-y_m)))
+    if(r2 < 0):
+        r2 = 0
+
+    return r2
+
+
+def func(x, a, m, p):
+    return np.cos(m * x + p) + a
+
+
+def poly4(x, c0, c1, c2, c3, c4):
+    return c0*(x**4) + c1*(x**3) + c2*(x**2) + c3*x + c4
+
+def sum_sine_3(x, a1, b1, c1, a2, b2, c2, a3, b3, c3):
+    return a1*np.sin(b1*x+c1) + a2*np.sin(b2*x+c2) + a3*np.sin(b3*x+c3)
+
+
+def sum_sine_3_bfgs(P, x):
+    res = P[0]*np.sin(P[1]*x+P[2]) + P[3]*np.sin(P[4]*x+P[5]) + P[6]*np.sin(P[7]*x+P[8])
+    return np.sum((res - x)*(res - x))
+
+def sum_sine3_pso(P, x, y):
+    # p = C.shape[0]
+
+    f_loss = np.empty(0)
+
+    for idx in range(0, P.shape[0]):
+        res = P[idx, 0]*np.sin(P[idx, 1]*x+P[idx, 2]) + P[idx, 3]*np.sin(P[idx, 4]*x+P[idx, 5]) + P[idx, 6]*np.sin(P[idx, 7]*x+P[idx, 8])
+        # f_loss = np.append(f_loss, np.sum((res - Y)*(res - Y)))
+        f_loss = np.append(f_loss, 1-r_squared(res, y))
+
+    return f_loss
+
 max_epochs = 30000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
-io_size = 4096
+io_size = 32
 feature_size = 1
-cluster_size = 256
+cluster_size = 8
 read_data = True
 
 # setup everything
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 device = "cpu"
 model = AE(io_size, feature_size).to(device)
+decoder = Decoder(feature_size, io_size).to(device)
 
 # this is setup as a static learning rate.  we may want to look at variable lr based on some performance numbers
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 criterion = nn.MSELoss()
 
-# def process_block():
-
-
-
+dec_opt = optim.Adam(decoder.parameters(), lr=1e-3)
 
 if __name__ == '__main__':
 
@@ -84,8 +128,6 @@ if __name__ == '__main__':
 
     os.makedirs(log_dir, exist_ok=True)
 
-
-
     # writer to save the data
     # test_writer = open((log_dir + base_name + "_{:02d}-bits_M3_".format(fp_bits) + "data.bin"), "wb")
 
@@ -120,6 +162,7 @@ if __name__ == '__main__':
         data += t1
 
     model.decoder.output_layer.weight.data = nn.Parameter(torch.from_numpy(data.reshape(model.decoder.output_layer.weight.shape)))
+
     bp = 0
 
 
@@ -138,34 +181,34 @@ if __name__ == '__main__':
 
 
     # model must be set to train mode
-    model.train()
+    # model.train()
+    #
+    # print("block {:}".format(idx))
+    # for epoch in range(max_epochs):
+    #     loss = 0
+    #     optimizer.zero_grad()
+    #     XO = model(X)
+    #
+    #     train_loss = criterion(XO, X)
+    #     loss += train_loss.item()
+    #
+    #     print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, loss))
+    #
+    #     loss_q = torch.sum(torch.abs(torch.floor(XO + 0.5) - X))
+    #     if (loss < 0.15):
+    #         bp = 10
+    #         break
+    #
+    #     train_loss.backward()
+    #     optimizer.step()
+    #
+    # loss = torch.sum(torch.abs(torch.floor(XO + 0.5) - X))
+    # print("loss = {:.6f}\n".format(loss.item()))
 
-    print("block {:}".format(idx))
-    for epoch in range(max_epochs):
-        loss = 0
-        optimizer.zero_grad()
-        XO = model(X)
+    #
+    # F2 = model.encoder(X)
 
-        train_loss = criterion(XO, X)
-        loss += train_loss.item()
-
-        print("epoch : {}/{}, loss = {:.6f}".format(epoch + 1, max_epochs, loss))
-
-        loss_q = torch.sum(torch.abs(torch.floor(XO + 0.5) - X))
-        if (loss < 0.15):
-            bp = 10
-            break
-
-        train_loss.backward()
-        optimizer.step()
-
-    loss = torch.sum(torch.abs(torch.floor(XO + 0.5) - X))
-    print("loss = {:.6f}\n".format(loss.item()))
-
-
-    F2 = model.encoder(X)
-
-
+    F2 = torch.from_numpy(F_np).to(device)
     XO2 = model.decoder(F2)
 
 
@@ -313,7 +356,81 @@ if __name__ == '__main__':
 
     print("dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}".format(dist_mean, dist_std, phase_mean, phase_std))
 
-        # # write the reconstructed data to a binary file
+    # try to do curve fitting
+    c_x = np.arange(0, io_size, 1)
+    c_y = data.reshape(-1)
+
+    # numpy fitting
+
+
+    # pso fitting
+    # Set-up hyperparameters
+    pso_options = {'c1': 2.2, 'c2': 2.1, 'w': 1.0}
+    pso_opt = ps.single.GlobalBestPSO(n_particles=200, dimensions=9, options=pso_options)
+    cost, P = pso_opt.optimize(sum_sine3_pso, iters=200, x=c_x, y=xw)
+    print(P)
+
+    c_x2 = np.arange(0, io_size, 0.01)
+    plt.scatter(c_x, xw, c='blue', s=1, label='data')
+    # plt.plot(c_x, func(c_x, *popt), 'r-', label='fit')
+    # plt.plot(c_x, poly4(c_x, *popt), 'r-', label='fit')
+    plt.plot(c_x2, sum_sine_3(c_x2, *P), 'r-', label='fit')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.legend()
+    plt.show()
+
+
+    # scipy fitting
+    # popt, pcov = curve_fit(func, c_x, c_y)
+    # popt, pcov = curve_fit(poly4, c_x, c_y)
+    popt, pcov = curve_fit(sum_sine_3, c_x, c_y)
+
+    print(popt)
+
+    # plt.plot(c_x, c_y, 'b-', label='data')
+    plt.scatter(c_x, c_y, c='blue', s=1, label='data')
+    # plt.plot(c_x, func(c_x, *popt), 'r-', label='fit')
+    # plt.plot(c_x, poly4(c_x, *popt), 'r-', label='fit')
+    plt.plot(c_x2, sum_sine_3(c_x2, *popt), 'r-', label='fit')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.legend()
+    plt.show()
+
+
+    # popt2, pcov2 = curve_fit(func, c_x, xw)
+    # popt2, pcov2 = curve_fit(func, c_x, xw)
+    popt2, pcov2 = curve_fit(sum_sine_3, c_x, xw)
+    print(popt2)
+
+    plt.scatter(c_x, xw, c='blue', s=1, label='data')
+    # plt.plot(c_x, func(c_x, *popt2), 'r-', label='fit:')
+    # plt.plot(c_x, func(c_x, *popt2), 'r-', label='fit:')
+    plt.plot(c_x2, sum_sine_3(c_x2, *popt2), 'r-', label='fit:')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.legend()
+    plt.show()
+
+
+    # bfgs optimization
+    x0 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1])
+
+    xopt = fmin_bfgs(sum_sine_3_bfgs, x0, args=(c_x,))
+    print(xopt)
+
+    plt.scatter(c_x, xw, c='blue', s=1, label='data')
+    # plt.plot(c_x, func(c_x, *popt2), 'r-', label='fit:')
+    # plt.plot(c_x, func(c_x, *popt2), 'r-', label='fit:')
+    plt.plot(c_x2, sum_sine_3_bfgs(xopt, c_x2), 'r-', label='fit:')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    plt.legend()
+    plt.show()
+
+
+    # # write the reconstructed data to a binary file
         # t2 = (Y.numpy())[0:x.size]
         # t2 = t2.reshape([x.size]).astype(np.int16)
         # test_writer.write(t2)

@@ -40,3 +40,9 @@ class AE(nn.Module):
         code = self.encoder(features)
         reconstructed = self.decoder(code)
         return reconstructed
+
+
+
+
+
+
