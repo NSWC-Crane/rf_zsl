@@ -16,7 +16,7 @@ commandwindow;
 %% load in the data
 byte_order = 'ieee-le';
 data_type = 'int16';
-filename = 'E:/Projects/rf_zsl/data/sdr_test_10M_100m_0001.bin';
+filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0001.bin');
 
 [iq, iqc, i_data, q_data] = read_binary_iq_data(filename, data_type, byte_order);
 
