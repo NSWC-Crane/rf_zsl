@@ -23,6 +23,7 @@ def rewrite_weights(weights,number_of_clusters = 7):
     prev2 = x1
     prev = x1
 
+    #a_list is the list of clusters
     a_list = []
     a_list.append(x1)   #x1
     a_list.append(curr) #x2
@@ -36,6 +37,7 @@ def rewrite_weights(weights,number_of_clusters = 7):
     #x5 = round(x4 + (x4-x3),8)
     #x6 = round(x5 + (x5-x4),8)
 
+    #find the clusters at = intervals (assuming we are linear based)
     while counter < number_of_clusters-2 :
 
     
@@ -49,11 +51,11 @@ def rewrite_weights(weights,number_of_clusters = 7):
 
     #a_list = [x1,x2,x3,x4,x5,x6,x7]
     print(a_list)
-    temp_values = []
-    temp_clusters = []
-    temp_div = []
-    temp_sign = []
-    final_values = []
+    temp_values = []   #compressed values
+    temp_clusters = [] #to know which weight belongs to which cluster
+    temp_div = []      #do we multiply/divide by 10 or 100
+    temp_sign = []     #sign for each weight when adding/sub back to cluster
+    final_values = []  #rebuilt after compressed
 
     
     temp = [1,2,3,4,5,6]
@@ -64,9 +66,15 @@ def rewrite_weights(weights,number_of_clusters = 7):
     for i in x:
         given_value = i
         absolute_difference_function = lambda list_value : abs(list_value - given_value)
+        
+        #find the closest cluster and make it a positive int
         weight_value = round(i - min(a_list, key = absolute_difference_function),8)*100000000
+        
+        #add compressed int to weight values
         temp_values.append(int(weight_value/100))
         print(weight_value)
+        
+        #which cluster it belongs to
         temp_clusters.append(min(a_list, key = absolute_difference_function))
         cluster = min(a_list, key = absolute_difference_function)
         if(i - cluster < 0):
@@ -76,6 +84,7 @@ def rewrite_weights(weights,number_of_clusters = 7):
 
     #print(temp)
 
+    #do we divide by another 10 because number is too large
     counter = 0
     for i in temp_values:
         if(abs(i) > 99):
@@ -90,6 +99,8 @@ def rewrite_weights(weights,number_of_clusters = 7):
     print(compressed_weights)
     print(len(temp_values), len(temp_clusters), len(temp_div), len(temp_sign))
 
+    
+    #rebuild the compressed weights (there is loss in the weights)
     max_len = 32000
     for i in range(0,2048): #ijkl, temp_values, temp_clusters, temp_div, temp_sign:
         value = temp_values[i]
