@@ -365,20 +365,20 @@ if __name__ == '__main__':
 
     # pso fitting
     # Set-up hyperparameters
-    pso_options = {'c1': 2.2, 'c2': 2.1, 'w': 1.0}
-    pso_opt = ps.single.GlobalBestPSO(n_particles=200, dimensions=9, options=pso_options)
-    cost, P = pso_opt.optimize(sum_sine3_pso, iters=200, x=c_x, y=xw)
-    print(P)
-
-    c_x2 = np.arange(0, io_size, 0.01)
-    plt.scatter(c_x, xw, c='blue', s=1, label='data')
-    # plt.plot(c_x, func(c_x, *popt), 'r-', label='fit')
-    # plt.plot(c_x, poly4(c_x, *popt), 'r-', label='fit')
-    plt.plot(c_x2, sum_sine_3(c_x2, *P), 'r-', label='fit')
-    plt.xlabel('x')
-    plt.ylabel('y')
-    plt.legend()
-    plt.show()
+    # pso_options = {'c1': 2.2, 'c2': 2.1, 'w': 1.0}
+    # pso_opt = ps.single.GlobalBestPSO(n_particles=200, dimensions=9, options=pso_options)
+    # cost, P = pso_opt.optimize(sum_sine3_pso, iters=200, x=c_x, y=xw)
+    # print(P)
+    #
+    # c_x2 = np.arange(0, io_size, 0.01)
+    # plt.scatter(c_x, xw, c='blue', s=1, label='data')
+    # # plt.plot(c_x, func(c_x, *popt), 'r-', label='fit')
+    # # plt.plot(c_x, poly4(c_x, *popt), 'r-', label='fit')
+    # plt.plot(c_x2, sum_sine_3(c_x2, *P), 'r-', label='fit')
+    # plt.xlabel('x')
+    # plt.ylabel('y')
+    # plt.legend()
+    # plt.show()
 
 
     # scipy fitting
@@ -416,6 +416,8 @@ if __name__ == '__main__':
 
     # bfgs optimization
     x0 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1])
+
+
 
     xopt = fmin_bfgs(sum_sine_3_bfgs, x0, args=(c_x,))
     print(xopt)
