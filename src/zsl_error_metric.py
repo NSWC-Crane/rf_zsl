@@ -2,10 +2,9 @@ import numpy as np
 
 def zsl_error_metric(x, y):
 
-    """Optimize the swarm for a number of iterations
-
-    Performs the optimization to evaluate the objective
-    function :code:`f` for a number of iterations :code:`iter.`
+    """
+    function to calculate the magnitude and phase metrices between an
+    original dataset and a reconstructed dataset
 
     Parameters
     ----------

@@ -354,7 +354,7 @@ if __name__ == '__main__':
 
     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(X.numpy(), XO2.detach().numpy())
 
-    print("dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}".format(dist_mean, dist_std, phase_mean, phase_std))
+    print("dist_mean = {:0.4f}, dist_std = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}".format(dist_mean, dist_std, phase_mean, phase_std))
 
     # try to do curve fitting
     c_x = np.arange(0, io_size, 1)
