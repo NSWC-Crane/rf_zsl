@@ -10,6 +10,7 @@ from numpy import diff
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import r2_score
+import os
 
 device = "cpu"
 
@@ -240,28 +241,7 @@ class SmallWeightLoss(nn.Module):
         return total_loss
 
 
-def get_feature_size(in_size):
-    return [int(in_size / 1.2), int(in_size / 2), int(in_size / 3),
-            int(in_size / 4), int(in_size / 5), int(in_size / 6)]
-
-
-def get_n_cluster(fs):
-    return [int(fs / 2), int(fs / 3),
-            int(fs / 4), int(fs / 5), int(fs / 6)]
-
-
-def get_d_init(fs):
-    return [int(fs * 1.5),
-            int(fs * 2), int(fs * 4)]
-
-
-def count_freq(labels, max=200):
-    """
-    return an array of tuples, containing the frequency a particular value appears
-    input: list, label for each weight
-    output: list
-    """
-
+def count_freq(labels):
     unique, count = np.unique(labels, return_counts=True)
     return unique, count
 
@@ -281,7 +261,6 @@ def sort_labels(labels_arr, map_arr):
 
 
 def get_ranges(discontinuities, last_idx=1023):
-
     if discontinuities.size == 0:
         return [(0, last_idx)]
 
@@ -302,11 +281,7 @@ def search_range(label, ranges):
     return None
 
 
-### GRAPHS ###
-
-
 def plot_data(y, x=None, title='', xlabel='', ylabel='', file_name='', save=False):
-
     y = np.reshape(y, (-1,))
 
     plt.figure()
@@ -350,15 +325,12 @@ def assign_weights(labels, clusters):
 
 
 def get_clusters(models, n_clusters, ranges, **kwargs):
-    """
-    Return an array of size n_clusters of all weights
-    TODO: add kwargs for degree of PolynomialFeatures
-    """
+    """Return an array of size n_clusters of all weights"""
     clusters = np.zeros(n_clusters)
 
     for n_cluster in range(n_clusters):
         idx = search_range(n_clusters, ranges)
-        x = np.array([n_cluster]).reshape(1,-1)
+        x = np.array([n_cluster]).reshape(1, -1)
         if 'degree' in kwargs:
             poly_reg = PolynomialFeatures(degree=kwargs['degree'])
             x = poly_reg.fit_transform(np.int32(idx).reshape(1, -1))
@@ -386,3 +358,138 @@ def get_models(x, y, disc, **kwargs):
 
     return models
 
+
+class Compress:
+    """Curve fitting for compressing number of clusters saved"""
+
+    def __init__(self, clusters):
+        self.r_ = []
+        self.points_ = ()
+        self.models_ = []
+        self.clusters_ = clusters
+
+    def get_models(self):
+        return self.models_
+
+    def get_clusters(self):
+        return self.clusters_
+
+    def find_discontinuity_points(self, data, dx=0.01):
+        dy = diff(data.reshape(100, )) / dx
+        # plt.figure()
+        # plt.scatter(data, color='red')
+        # plt.plot(dy)
+        # plt.title('Sorted weights')
+
+        points = np.argwhere(dy > 1)
+        self.points_ = points.reshape(points.shape[0], )
+        return self.points_
+
+    def get_ranges(self, discontinuities, last_idx=1023):
+        if discontinuities.size == 0:
+            return [(0, last_idx)]
+
+        self.r_ = [(0, discontinuities[0])]
+
+        for i in range(1, discontinuities.size):
+            self.r_.append((discontinuities[i - 1] + 1, discontinuities[i]))
+        self.r_.append((discontinuities[-1] + 1, last_idx))
+
+        return self.r_
+
+    def search_range(self, label):
+        for idx, trange in enumerate(self.r_):
+            if trange[0] <= label <= trange[1]:
+                return idx
+        return None
+
+    def train_models(self, x, y, disc, **kwargs):
+        """Return a list of linear regression models"""
+
+        for idx in disc:
+            x_slice = x[idx[0]:idx[1] + 1]
+            y_slice = y[idx[0]:idx[1] + 1]
+            if 'degree' in kwargs:
+                poly_reg = PolynomialFeatures(degree=kwargs['degree'])
+                x_slice = poly_reg.fit_transform(x[idx[0]:idx[1] + 1])
+
+            lin_reg = LinearRegression().fit(x_slice, y_slice)
+            print(r2_score(y_slice, lin_reg.predict(x_slice)))
+
+            self.models.append(lin_reg)
+
+        return self.models
+
+    def calculate_clusters(self, labels, temp, **kwargs):
+        holder = np.copy(labels).astype(np.float32)
+
+        for i, label in enumerate(labels):
+            j = search_range(label, temp)
+            x = np.array([label])
+            if 'degree' in kwargs:
+                poly = PolynomialFeatures(degree=kwargs['degree'])
+                x = poly.fit_transform(np.int32(label).reshape(-1, 1))
+            holder[i] = self.models[j].predict(x)
+
+        return holder
+
+    def decode_labels(self, labels, clusters):
+        """Convert the labels to their weights based on the clusters array"""
+        for cluster in range(np.size(clusters)):
+            idx = np.where(labels == cluster)
+            labels[idx] = clusters[cluster]
+
+        return labels
+
+    def rearrange_labels(self, labels_arr, map_arr):
+        """Rearrange labels based on the map_arr"""
+
+        sorted_labels = np.zeros(labels_arr.shape) - 1
+
+        # loop from 0, 1, 2... n_clusters
+        # replace each labels with its mapped index
+        for label, mapped_idx in enumerate(map_arr):
+            idx = np.where(labels_arr == mapped_idx)[0]
+            sorted_labels[idx] = label
+
+        return sorted_labels
+
+
+class DataFile:
+    """Save or read encoded weights and other parameters from binary files"""
+    def __init__(self, num_bits=8, **kwargs):
+        if 'file_path' in kwargs:
+            self.file_path_ = kwargs['file_path']
+        else:
+            self.file_path_ = './'
+        if 'file_name' in kwargs:
+            self.file_name_ = kwargs['file_name']
+        else:
+            self.file_name_ = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        self.num_bits_ = num_bits
+        self.data_type_ = np.uint8
+        self.data_ = np.array([])
+
+    def get_data(self):
+        return self.data_
+
+    def get_filename(self):
+        return self.file_name_
+
+    def get_filepath(self):
+        return self.file_path_
+
+    def set_data(self, data):
+        self.data_ = data
+
+    def read_file(self):
+        full_path = os.path.join(self.file_path_, self.file_name_)
+        self.data_ = np.fromfile((full_path + ".bin"), dtype=self.data_type_, count=-1, sep='', offset=0). \
+            astype(np.float32)
+
+    def write_file(self):
+        full_path = os.path.join(self.file_path_, self.file_name_)
+        fh = open((full_path + ".bin"), "wb")
+        fh.write(self.data_.astype(self.data_type_))
+        fh.close()
