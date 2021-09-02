@@ -340,10 +340,7 @@ def find_discontinuity_points(data, dx=0.01):
 
 
 def assign_weights(labels, clusters):
-    """
-    Convert the labels to their weights based on the clusters array
-    TODO: add kwargs for degree of PolynomialFeatures
-    """
+    """Convert the labels to their weights based on the clusters array"""
 
     for cluster in range(np.size(clusters)):
         idx = np.where(labels == cluster)
@@ -352,13 +349,21 @@ def assign_weights(labels, clusters):
     return labels
 
 
-def get_clusters(models, n_clusters, ranges):
-    """Return an array of size n_clusters of all weights"""
+def get_clusters(models, n_clusters, ranges, **kwargs):
+    """
+    Return an array of size n_clusters of all weights
+    TODO: add kwargs for degree of PolynomialFeatures
+    """
     clusters = np.zeros(n_clusters)
 
     for n_cluster in range(n_clusters):
         idx = search_range(n_clusters, ranges)
-        clusters[n_cluster] = models[idx].predict(np.array([n_cluster]).reshape(1,-1))
+        x = np.array([n_cluster]).reshape(1,-1)
+        if 'degree' in kwargs:
+            poly_reg = PolynomialFeatures(degree=kwargs['degree'])
+            x = poly_reg.fit_transform(np.int32(idx).reshape(1, -1))
+
+        clusters[n_cluster] = models[idx].predict(x)
 
     return clusters
 
@@ -370,7 +375,7 @@ def get_models(x, y, disc, **kwargs):
     for idx in disc:
         x_slice = x[idx[0]:idx[1] + 1]
         y_slice = y[idx[0]:idx[1] + 1]
-        if kwargs['degree']:
+        if 'degree' in kwargs:
             poly_reg = PolynomialFeatures(degree=kwargs['degree'])
             x_slice = poly_reg.fit_transform(x[idx[0]:idx[1] + 1])
 
