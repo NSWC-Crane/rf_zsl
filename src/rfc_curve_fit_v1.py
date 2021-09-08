@@ -84,7 +84,6 @@ if __name__ == '__main__':
     base_name = "sdr_test"
     iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
-
     # base_name = "VH1-164"
     # xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
@@ -98,11 +97,15 @@ if __name__ == '__main__':
     os.makedirs(log_dir, exist_ok=True)
 
     # writer to save the data
-    test_writer = open((log_dir + base_name + "_reconstructed_data.bin"), "wb")
+    test_writer = open((log_dir + base_name + "_recon_data_" + date_time + ".bin"), "wb")
 
     print("Processing...\n")
+    num_bytes = 0
+    sine_size = 3
+    io_size_list = 2**np.arange(16, 3, -1)
 
-    idx = 50000
+    # idx = 50000
+
     for idx in range(0, y_blocks*io_size, io_size):
 
         # step 1: the block to process
@@ -110,7 +113,7 @@ if __name__ == '__main__':
         x_data = np.arange(0, y_data.shape[0], 1)
         x_data_hr = np.arange(0, y_data.shape[0], 0.01)
 
-        sine_size = 4
+
 
         # create initial guess based on frequency content
         x0 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1])
@@ -128,7 +131,7 @@ if __name__ == '__main__':
 
         try:
             # scipy fitting
-            popt, pcov = curve_fit(f=sum_sine_4, xdata=x_data, ydata=y_data, p0=y0)
+            popt, pcov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
 
 
             # plt.scatter(x_data, y_data, c='blue', s=1, label='data')
@@ -139,20 +142,29 @@ if __name__ == '__main__':
             # plt.show()
 
             # get the reconstructed value
-            y_hat = np.floor(sum_sine_4(x_data, *popt) + 0.5)
+            y_hat = np.floor(sum_sine_3(x_data, *popt) + 0.5)
+            r2 = r2_score(y_data, y_hat)
+
+            if r2 < 0.999:
+                y_hat = y_data
+                num_bytes += io_size * 2
+                r2 = 1
+            else:
+                num_bytes += sine_size*4
 
             # print(popt)
-            #
+
         except RuntimeError:
             print("RuntimeError")
 
             y_hat = y_data
+            num_bytes += io_size*2
+            r2 = 1
 
         # calculate the metrics
         dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-        print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}".format(idx, dist_mean, dist_std, phase_mean, phase_std))
-
-        print("r_squared = {:0.4f}\n".format(r2_score(y_data, y_hat)))
+        print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(idx, dist_mean, dist_std, phase_mean, phase_std, r2))
+        # print("r_squared = {:0.4f}\n".format(r2_score(y_data, y_hat)))
 
         bp = 1
 
@@ -162,7 +174,7 @@ if __name__ == '__main__':
         test_writer.write(y_hat.astype(np.int16))
 
     test_writer.close()
-
+    print("bytes Processed = {:}, bytes stored = {:}, ratio = {:0.4f}".format(iq_data.size*2, num_bytes, num_bytes/(iq_data.size*2)))
 
     # just a stopping break point before the code ends
     bp = 9
