@@ -100,81 +100,190 @@ if __name__ == '__main__':
     test_writer = open((log_dir + base_name + "_recon_data_" + date_time + ".bin"), "wb")
 
     print("Processing...\n")
-    num_bytes = 0
     sine_size = 3
-    io_size_list = 2**np.arange(16, 3, -1)
+    io_size_list = 2**np.arange(12, 3, -1)
 
-    # idx = 50000
+    # index into the data file
+    file_index = 0
 
-    for idx in range(0, y_blocks*io_size, io_size):
+    # counter for the number of bytes used to compress files
+    comp_bytes = 0
 
-        # step 1: the block to process
-        y_data = iq_data[idx:(idx + io_size)].reshape(-1)
-        x_data = np.arange(0, y_data.shape[0], 1)
-        x_data_hr = np.arange(0, y_data.shape[0], 0.01)
+    # r-squared fit value that is considered good
+    r2_fit = 0.99
+
+    # loop that runs through the data file in io_size_list[...] increments
+    # TODO
+    while(file_index < iq_data.size):
+        size_index = 0
+
+        # this check is to see if the remaining data in the file is large enough to process
+        if (iq_data.size - file_index) < io_size_list[0]:
+            for size_index in range(0, io_size_list.size, 1):
+                if (iq_data.size - (file_index + io_size_list[size_index])) > 0:
+                    break
+
+        # loop through each of the io_size_list values and stop when a good fit is reached
+        for idx in range(size_index, io_size_list.size, 1):
+
+            # grab a chunk of data
+            y_data = iq_data[file_index:(file_index + io_size_list[idx])].reshape(-1)
+            x_data = np.arange(0, io_size_list[idx], 1)
+
+            try:
+                # create initial guess based on frequency content
+                y0 = np.ones([sine_size * 3], dtype=np.float32)
+
+                fy = np.fft.fft(y_data)
+                for jdx in range(0, sine_size, 1):
+                    y0[3 * jdx] = np.mean(np.abs(y_data)) / (jdx + 1)
+
+                    ml = np.argmax(np.abs(fy[0:math.floor(io_size / 2)]))
+                    y0[3 * jdx + 1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
+                    fy[ml] = 0
+
+                    bp = 0
+
+                # run the fit based on the data chunk and the initial guess
+                fit_values, fit_cov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
+
+                # get the reconstructed values based on the fit values
+                y_hat = sum_sine_3(x_data, *fit_values)
+                y_hat = np.floor(y_hat + 0.5)
+                r2 = r2_score(y_data, y_hat)
+
+                if r2 > r2_fit:
+                    # increment the compression byte counter
+                    comp_bytes += sine_size * 4
+
+                    #increment the file_counter
+                    file_index += io_size_list[idx]
+
+                    # calculate the metrics and print
+                    dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
+                    print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+
+                    # save the values to the file
+                    test_writer.write(y_hat.astype(np.int16))
+
+                    break
+
+                elif idx == io_size_list.size-1:
+                    y_hat = y_data
+
+                    # increment the compression byte counter
+                    comp_bytes += io_size_list[idx] * 2
+
+                    # increment the file_counter
+                    file_index += io_size_list[idx]
+
+                    r2 = 1
+
+                    # calculate the metrics and print
+                    dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
+                    print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+
+                    # save the values to the file
+                    test_writer.write(y_hat.astype(np.int16))
+
+            except RuntimeError:
+                print("No good fit!")
+
+                if idx == io_size_list.size - 1:
+                    y_hat = y_data
+
+                    # increment the compression byte counter
+                    comp_bytes += io_size_list[idx] * 2
+
+                    # increment the file_counter
+                    file_index += io_size_list[idx]
+
+                    r2 = 1
+
+                    # calculate the metrics and print
+                    dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
+                    print(
+                        "block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+
+                    # save the values to the file
+                    test_writer.write(y_hat.astype(np.int16))
+
+                    break
 
 
+        # for idx in range(0, y_blocks*io_size, io_size):
+        #
+        #     # step 1: the block to process
+        #     y_data = iq_data[idx:(idx + io_size)].reshape(-1)
+        #     x_data = np.arange(0, y_data.shape[0], 1)
+        #     x_data_hr = np.arange(0, y_data.shape[0], 0.01)
+        #
+        #
+        #
+        #     # create initial guess based on frequency content
+        #     y0 = np.ones([sine_size*3], dtype=np.float32)
+        #
+        #     fy = np.fft.fft(y_data)
+        #     for jdx in range(0, sine_size, 1):
+        #         y0[3*jdx] = np.mean(np.abs(y_data))/(jdx+1)
+        #
+        #         ml = np.argmax(np.abs(fy[0:math.floor(io_size/2)]))
+        #         y0[3*jdx+1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
+        #         fy[ml] = 0
+        #
+        #         bp = 0
+        #
+        #     try:
+        #         # scipy fitting
+        #         popt, pcov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
+        #
+        #
+        #         # plt.scatter(x_data, y_data, c='blue', s=1, label='data')
+        #         # plt.plot(x_data_hr, sum_sine_3(x_data_hr, *popt), 'r-', label='fit')
+        #         # plt.xlabel('x')
+        #         # plt.ylabel('y')
+        #         # plt.legend()
+        #         # plt.show()
+        #
+        #         # get the reconstructed value
+        #         y_hat = np.floor(sum_sine_3(x_data, *popt) + 0.5)
+        #         r2 = r2_score(y_data, y_hat)
+        #
+        #         if r2 < 0.999:
+        #             y_hat = y_data
+        #             num_bytes += io_size * 2
+        #             r2 = 1
+        #         else:
+        #             num_bytes += sine_size*4
+        #
+        #         # print(popt)
+        #
+        #     except RuntimeError:
+        #         print("RuntimeError")
+        #
+        #         y_hat = y_data
+        #         num_bytes += io_size*2
+        #         r2 = 1
+        #
+        #     # calculate the metrics
+        #     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
+        #     print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(idx, dist_mean, dist_std, phase_mean, phase_std, r2))
+        #     # print("r_squared = {:0.4f}\n".format(r2_score(y_data, y_hat)))
+        #
+        #     bp = 1
+        #
+        #     # write the reconstructed data to a binary file
+        #     # # t2 = (Y.numpy())[0:x.size]
+        #     # # t2 = y_hat.astype(np.int16)
+        #     test_writer.write(y_hat.astype(np.int16))
 
-        # create initial guess based on frequency content
-        x0 = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1])
-        y0 = np.ones([sine_size*3], dtype=np.float32)
 
-        fy = np.fft.fft(y_data)
-        for jdx in range(0, sine_size, 1):
-            y0[3*jdx] = np.mean(np.abs(y_data))/(jdx+1)
-
-            ml = np.argmax(np.abs(fy[0:math.floor(io_size/2)]))
-            y0[3*jdx+1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
-            fy[ml] = 0
-
-            bp = 0
-
-        try:
-            # scipy fitting
-            popt, pcov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
-
-
-            # plt.scatter(x_data, y_data, c='blue', s=1, label='data')
-            # plt.plot(x_data_hr, sum_sine_3(x_data_hr, *popt), 'r-', label='fit')
-            # plt.xlabel('x')
-            # plt.ylabel('y')
-            # plt.legend()
-            # plt.show()
-
-            # get the reconstructed value
-            y_hat = np.floor(sum_sine_3(x_data, *popt) + 0.5)
-            r2 = r2_score(y_data, y_hat)
-
-            if r2 < 0.999:
-                y_hat = y_data
-                num_bytes += io_size * 2
-                r2 = 1
-            else:
-                num_bytes += sine_size*4
-
-            # print(popt)
-
-        except RuntimeError:
-            print("RuntimeError")
-
-            y_hat = y_data
-            num_bytes += io_size*2
-            r2 = 1
-
-        # calculate the metrics
-        dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-        print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(idx, dist_mean, dist_std, phase_mean, phase_std, r2))
-        # print("r_squared = {:0.4f}\n".format(r2_score(y_data, y_hat)))
-
-        bp = 1
-
-        # write the reconstructed data to a binary file
-        # # t2 = (Y.numpy())[0:x.size]
-        # # t2 = y_hat.astype(np.int16)
-        test_writer.write(y_hat.astype(np.int16))
 
     test_writer.close()
-    print("bytes Processed = {:}, bytes stored = {:}, ratio = {:0.4f}".format(iq_data.size*2, num_bytes, num_bytes/(iq_data.size*2)))
+    print("\nbytes Processed = {:}, bytes stored = {:}, ratio = {:0.6f}".format(iq_data.size*2, comp_bytes, comp_bytes/(iq_data.size*2)))
 
     # just a stopping break point before the code ends
     bp = 9
