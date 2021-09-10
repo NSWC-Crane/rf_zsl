@@ -28,9 +28,9 @@ iq_int = iq(:);
 
 %% try curve fitting
 
-iq_start = 1;
-io_size = 16;
-sine_size = 2;
+iq_start = 50001;
+io_size = 1024;
+sine_size = 3;
 
 iq_slice = iq_int(iq_start:io_size+iq_start-1);
 y_real = iq_slice(1:2:end);

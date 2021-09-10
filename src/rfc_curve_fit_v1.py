@@ -61,6 +61,29 @@ def sum_sine_3(x, a1, b1, c1, a2, b2, c2, a3, b3, c3):
 def sum_sine_4(x, a1, b1, c1, a2, b2, c2, a3, b3, c3, a4, b4, c4):
     return a1*np.sin(b1*x+c1) + a2*np.sin(b2*x+c2) + a3*np.sin(b3*x+c3) + a4*np.sin(b4*x+c4)
 
+
+def get_ssin_start(sine_size, x_data, y_data):
+    y0 = np.ones([sine_size * 3], dtype=np.float32)
+    x0 = np.zeros([y_data.size, 2 * sine_size], dtype=np.float32)
+
+    fy = np.fft.fft(y_data)
+    for jdx in range(0, sine_size, 1):
+        ml = np.argmax(np.abs(fy[0:math.floor(y_data.size / 2)]))
+        y0[3 * jdx + 1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
+        fy[ml] = 0
+
+        x0[:, 2 * jdx] = np.sin(y0[3 * jdx + 1] * x_data)
+        x0[:, 2 * jdx + 1] = np.cos(y0[3 * jdx + 1] * x_data)
+
+        ab = np.matmul(np.linalg.pinv(x0[:, 0:2 * jdx+2]), y_data).reshape(-1)
+
+        y0[3 * jdx] = math.sqrt(ab[2*jdx]*ab[2*jdx] + ab[2*jdx+1]*ab[2*jdx+1])
+        y0[3 * jdx + 2] = math.atan2(ab[2*jdx+1], ab[2*jdx])
+
+    return y0
+
+#------------------------------------------------------------------------------
+
 max_epochs = 30000
 
 # number of random samples to generate (should be a multiple of two for flattening an IQ pair)
@@ -99,6 +122,12 @@ if __name__ == '__main__':
     # writer to save the data
     test_writer = open((log_dir + base_name + "_recon_data_" + date_time + ".bin"), "wb")
 
+    # writer to save the results of each block's compression
+    data_wr = open((log_dir + base_name + "_recon_results_" + date_time + ".txt"), "w")
+
+    # test writer for the binary zip file
+    zip_data = open((log_dir + base_name + "_comp_" + date_time + ".zsl"), "wb")
+
     print("Processing...\n")
     sine_size = 3
     io_size_list = 2**np.arange(12, 3, -1)
@@ -110,7 +139,9 @@ if __name__ == '__main__':
     comp_bytes = 0
 
     # r-squared fit value that is considered good
-    r2_fit = 0.99
+    r2_fit = 0.999
+
+    barLength = 20
 
     # loop that runs through the data file in io_size_list[...] increments
     # TODO
@@ -132,17 +163,21 @@ if __name__ == '__main__':
 
             try:
                 # create initial guess based on frequency content
-                y0 = np.ones([sine_size * 3], dtype=np.float32)
+                # y0 = np.ones([sine_size * 3], dtype=np.float32)
+                # # y0 = np.ones([sine_size * 3 + 1], dtype=np.float32)
+                # # y0[0] = np.mean(y_data)
+                #
+                # fy = np.fft.fft(y_data)
+                # for jdx in range(0, sine_size, 1):
+                #     y0[3 * jdx] = np.mean(np.abs(y_data)) / (jdx + 1)
+                #
+                #     ml = np.argmax(np.abs(fy[0:math.floor(y_data.size / 2)]))
+                #     y0[3 * jdx + 1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
+                #     fy[ml] = 0
+                #
+                #     bp = 0
 
-                fy = np.fft.fft(y_data)
-                for jdx in range(0, sine_size, 1):
-                    y0[3 * jdx] = np.mean(np.abs(y_data)) / (jdx + 1)
-
-                    ml = np.argmax(np.abs(fy[0:math.floor(io_size / 2)]))
-                    y0[3 * jdx + 1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
-                    fy[ml] = 0
-
-                    bp = 0
+                y0 = get_ssin_start(sine_size, x_data, y_data)
 
                 # run the fit based on the data chunk and the initial guess
                 fit_values, fit_cov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
@@ -153,19 +188,24 @@ if __name__ == '__main__':
                 r2 = r2_score(y_data, y_hat)
 
                 if r2 > r2_fit:
-                    # increment the compression byte counter
-                    comp_bytes += sine_size * 4
+                    # increment the compression byte counter: number of coefficients * size of float
+                    comp_bytes += (sine_size * 3) * 4
 
                     #increment the file_counter
                     file_index += io_size_list[idx]
 
                     # calculate the metrics and print
                     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-                    print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
-                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                    #         file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print(".", end='')
+
+                    # save the results to the file
+                    data_wr.write("{:},{:0.5f},{:0.5f},{:0.5f},{:0.5f},{:0.4f}\n".format(file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
 
                     # save the values to the file
                     test_writer.write(y_hat.astype(np.int16))
+                    zip_data.write(fit_values.astype(np.float32))
 
                     break
 
@@ -182,14 +222,19 @@ if __name__ == '__main__':
 
                     # calculate the metrics and print
                     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-                    print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
-                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                    #         file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print(".", end='')
+
+                    # save the results to the file
+                    data_wr.write("{:},{:0.5f},{:0.5f},{:0.5f},{:0.5f},{:0.4f}\n".format(file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
 
                     # save the values to the file
                     test_writer.write(y_hat.astype(np.int16))
+                    zip_data.write(y_hat.astype(np.int16))
 
             except RuntimeError:
-                print("No good fit!")
+                # print("No good fit!")
 
                 if idx == io_size_list.size - 1:
                     y_hat = y_data
@@ -204,86 +249,31 @@ if __name__ == '__main__':
 
                     # calculate the metrics and print
                     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-                    print(
-                        "block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
-                            file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(
+                    #         file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
+                    # print(".", end='')
+
+                    # save the results to the file
+                    data_wr.write("{:},{:0.5f},{:0.5f},{:0.5f},{:0.5f},{:0.4f}\n".format(file_index, dist_mean, dist_std, phase_mean, phase_std, r2))
 
                     # save the values to the file
                     test_writer.write(y_hat.astype(np.int16))
+                    zip_data.write(y_hat.astype(np.int16))
 
                     break
 
-
-        # for idx in range(0, y_blocks*io_size, io_size):
-        #
-        #     # step 1: the block to process
-        #     y_data = iq_data[idx:(idx + io_size)].reshape(-1)
-        #     x_data = np.arange(0, y_data.shape[0], 1)
-        #     x_data_hr = np.arange(0, y_data.shape[0], 0.01)
-        #
-        #
-        #
-        #     # create initial guess based on frequency content
-        #     y0 = np.ones([sine_size*3], dtype=np.float32)
-        #
-        #     fy = np.fft.fft(y_data)
-        #     for jdx in range(0, sine_size, 1):
-        #         y0[3*jdx] = np.mean(np.abs(y_data))/(jdx+1)
-        #
-        #         ml = np.argmax(np.abs(fy[0:math.floor(io_size/2)]))
-        #         y0[3*jdx+1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
-        #         fy[ml] = 0
-        #
-        #         bp = 0
-        #
-        #     try:
-        #         # scipy fitting
-        #         popt, pcov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0)
-        #
-        #
-        #         # plt.scatter(x_data, y_data, c='blue', s=1, label='data')
-        #         # plt.plot(x_data_hr, sum_sine_3(x_data_hr, *popt), 'r-', label='fit')
-        #         # plt.xlabel('x')
-        #         # plt.ylabel('y')
-        #         # plt.legend()
-        #         # plt.show()
-        #
-        #         # get the reconstructed value
-        #         y_hat = np.floor(sum_sine_3(x_data, *popt) + 0.5)
-        #         r2 = r2_score(y_data, y_hat)
-        #
-        #         if r2 < 0.999:
-        #             y_hat = y_data
-        #             num_bytes += io_size * 2
-        #             r2 = 1
-        #         else:
-        #             num_bytes += sine_size*4
-        #
-        #         # print(popt)
-        #
-        #     except RuntimeError:
-        #         print("RuntimeError")
-        #
-        #         y_hat = y_data
-        #         num_bytes += io_size*2
-        #         r2 = 1
-        #
-        #     # calculate the metrics
-        #     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
-        #     print("block {:}: dist_mean = {:0.4f}, dist_abs = {:0.4f}, phase_mean = {:0.4f}, phase_std = {:0.4f}, r_squared = {:0.4f}".format(idx, dist_mean, dist_std, phase_mean, phase_std, r2))
-        #     # print("r_squared = {:0.4f}\n".format(r2_score(y_data, y_hat)))
-        #
-        #     bp = 1
-        #
-        #     # write the reconstructed data to a binary file
-        #     # # t2 = (Y.numpy())[0:x.size]
-        #     # # t2 = y_hat.astype(np.int16)
-        #     test_writer.write(y_hat.astype(np.int16))
-
-
+        progress = file_index/iq_data.size
+        block = int(round(barLength * progress))
+        text = "\rPercent: [{:}] {:5.2f}%".format("#" * block + "-" * (barLength - block), progress * 100)
+        print(text, end='')
 
     test_writer.close()
-    print("\nbytes Processed = {:}, bytes stored = {:}, ratio = {:0.6f}".format(iq_data.size*2, comp_bytes, comp_bytes/(iq_data.size*2)))
+    zip_data.close()
+
+    print("\n\nbytes Processed = {:}, bytes stored = {:}, ratio = {:0.6f}".format(iq_data.size*2, comp_bytes, 1-comp_bytes/(iq_data.size*2)))
+
+    data_wr.write("\n#bytes Processed = {:}, bytes stored = {:}, ratio = {:0.6f}\n".format(iq_data.size*2, comp_bytes, 1-comp_bytes/(iq_data.size*2)))
+    data_wr.close()
 
     # just a stopping break point before the code ends
     bp = 9
