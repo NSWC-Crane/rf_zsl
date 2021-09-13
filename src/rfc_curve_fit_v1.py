@@ -104,11 +104,11 @@ if __name__ == '__main__':
     # step 1: load the data
     print("Loading data...\n")
 
-    base_name = "sdr_test"
-    iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    # base_name = "sdr_test"
+    # iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
-    # base_name = "VH1-164"
-    # xd = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    base_name = "VH1-164"
+    iq_data = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
     y_blocks = math.ceil(iq_data.size/io_size)
     data_type = "sdr"
@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
     print("Processing...\n")
     sine_size = 3
-    io_size_list = 2**np.arange(12, 3, -1)
+    io_size_list = 2**np.arange(12, 6, -1)
 
     # index into the data file
     file_index = 0
@@ -163,20 +163,6 @@ if __name__ == '__main__':
 
             try:
                 # create initial guess based on frequency content
-                # y0 = np.ones([sine_size * 3], dtype=np.float32)
-                # # y0 = np.ones([sine_size * 3 + 1], dtype=np.float32)
-                # # y0[0] = np.mean(y_data)
-                #
-                # fy = np.fft.fft(y_data)
-                # for jdx in range(0, sine_size, 1):
-                #     y0[3 * jdx] = np.mean(np.abs(y_data)) / (jdx + 1)
-                #
-                #     ml = np.argmax(np.abs(fy[0:math.floor(y_data.size / 2)]))
-                #     y0[3 * jdx + 1] = 2 * np.pi * (max(0.5, ml)) / (x_data[-1] - x_data[0])
-                #     fy[ml] = 0
-                #
-                #     bp = 0
-
                 y0 = get_ssin_start(sine_size, x_data, y_data)
 
                 # run the fit based on the data chunk and the initial guess
@@ -264,7 +250,7 @@ if __name__ == '__main__':
 
         progress = file_index/iq_data.size
         block = int(round(barLength * progress))
-        text = "\rPercent: [{:}] {:5.2f}%".format("#" * block + "-" * (barLength - block), progress * 100)
+        text = "\rPercent: [{:}] {:5.3f}%".format("#" * block + "-" * (barLength - block), progress * 100)
         print(text, end='')
 
     test_writer.close()
