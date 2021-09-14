@@ -104,11 +104,11 @@ if __name__ == '__main__':
     # step 1: load the data
     print("Loading data...\n")
 
-    # base_name = "sdr_test"
-    # iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    base_name = "sdr_test"
+    iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
-    base_name = "VH1-164"
-    iq_data = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
+    # base_name = "VH1-164"
+    # iq_data = np.fromfile("e:/data/zsl/" + base_name + ".sigmf-data.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
     y_blocks = math.ceil(iq_data.size/io_size)
     data_type = "sdr"
@@ -133,7 +133,7 @@ if __name__ == '__main__':
     io_size_list = 2**np.arange(12, 6, -1)
 
     # index into the data file
-    file_index = 0
+    file_index = 50000
 
     # counter for the number of bytes used to compress files
     comp_bytes = 0
@@ -159,7 +159,7 @@ if __name__ == '__main__':
 
             # grab a chunk of data
             y_data = iq_data[file_index:(file_index + io_size_list[idx])].reshape(-1)
-            x_data = np.arange(0, io_size_list[idx], 1)
+            x_data = np.arange(0, y_data.size, 1)
 
             try:
                 # create initial guess based on frequency content
@@ -178,7 +178,7 @@ if __name__ == '__main__':
                     comp_bytes += (sine_size * 3) * 4
 
                     #increment the file_counter
-                    file_index += io_size_list[idx]
+                    file_index += y_data.size
 
                     # calculate the metrics and print
                     dist_mean, dist_std, phase_mean, phase_std = zsl_error_metric(y_data, y_hat)
@@ -199,10 +199,10 @@ if __name__ == '__main__':
                     y_hat = y_data
 
                     # increment the compression byte counter
-                    comp_bytes += io_size_list[idx] * 2
+                    comp_bytes += y_data.size * 2
 
                     # increment the file_counter
-                    file_index += io_size_list[idx]
+                    file_index += y_data.size
 
                     r2 = 1
 
@@ -226,10 +226,10 @@ if __name__ == '__main__':
                     y_hat = y_data
 
                     # increment the compression byte counter
-                    comp_bytes += io_size_list[idx] * 2
+                    comp_bytes += y_data.size * 2
 
                     # increment the file_counter
-                    file_index += io_size_list[idx]
+                    file_index += y_data.size
 
                     r2 = 1
 
