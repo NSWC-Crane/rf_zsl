@@ -29,7 +29,8 @@ iq_int = iq(:);
 
 %% try curve fitting
 
-iq_start = 50001; %50001; %679410
+iq_start = 50001; 
+%iq_start = 679410;
 io_size = 4096;
 sine_size = 3;
 
