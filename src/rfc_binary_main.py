@@ -10,13 +10,11 @@ import datetime
 import os
 
 import matplotlib.pyplot as plt
-from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
-from sklearn.manifold import TSNE
-from scipy import stats
-import pandas as pd
 from numpy import diff
+from sklearn.metrics import r2_score
+from numpy.random import rand
 
 from zsl_error_metric import *
 from utils import *
@@ -26,6 +24,7 @@ from zsl_clustering import *
 input_size = 1024
 max_epochs = 1000
 feature_size = 1
+degree = 2
 
 num_clusters_max = 50
 num_clusters_step = 50
@@ -45,6 +44,8 @@ phase_std_arr = []
 loss_arr = []
 
 data_file = "lfm_test_10M_100m_0000"
+
+r = rand()
 
 
 # create the encoder class
@@ -129,26 +130,30 @@ criterion = nn.MSELoss()
 # torch.multiprocessing.set_start_method('spawn')
 if __name__ == '__main__':
 
-    idx = 0
+    iidx = 1563521
     rng = np.random.default_rng()
 
     # model must be set to train mode for QAT logic to work
     # model.train()
     lr_shift = 1.0
 
-    for n_clusters in [100, 200]:
+    for n_clusters in [100, 100]:
         if read_data == True:
             x = np.fromfile("../data/" + data_file + ".bin", dtype=np.int16, count=-1, sep='',
                             offset=0).astype(np.float32)
-            x = x[np.s_[idx:idx + input_size]]
+            x = x[np.s_[iidx:iidx + input_size]]
         else:
             x = rng.integers(-2048, 2048, size=(1, 1, 1, input_size), dtype=np.int16,
                              endpoint=False).astype(np.float32)
 
-
         # convert x into a torch tensor variable
         X = torch.from_numpy(x).to(device)
         X = X.view(-1, input_size)
+
+        bu = torch.from_numpy(x).to(device)
+        bu = bu.view(-1, input_size)
+
+        plot_data(X.detach().numpy())
 
         model = AE(input_size, feature_size).to(device)
         init_weights(model)
@@ -206,38 +211,9 @@ if __name__ == '__main__':
                 lr_shift = 0.9 * lr_shift
 
         # ------------------------------------------------------------------------------
+        # functions for plotting dist_mean_arr, dist_std_arr, phase_mean_arr, phase_std_arr, loss_arr
 
-        plt.figure()
-        plt.plot(loss_arr)
-        plt.title('Mean Squared Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.show()
-        # plt.savefig(f'mse_loss_nc{n_clusters}_idx{idx}')
-        plt.close()
-
-        plt.figure()
-        plt.plot(phase_mean_arr, label='phase mean')
-        plt.plot(phase_std_arr, label='phase std')
-        plt.title('Phase Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
-        # plt.savefig(f'phase_loss_nc{n_clusters}_idx{idx}')
-        plt.close()
-
-        plt.figure()
-        plt.plot(dist_mean_arr, label='dist mean')
-        plt.plot(dist_std_arr, label='dist std')
-        plt.title('Dist. Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.show()
-        # plt.savefig(f'dist_loss_nc{n_clusters}_idx{idx}')
-        plt.close()
-
+        # reset variables to empty arrays for next for loop iteration (different n_clusters)
         dist_mean_arr = []
         dist_std_arr = []
         phase_mean_arr = []
@@ -299,89 +275,94 @@ if __name__ == '__main__':
 
         # ------------------------------------------------------------------------------
 
-        weights_writer = open((log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin"), "wb")
-        model_weights = model.decoder.input_layer.weight.detach().numpy()
-        weights_writer.write(model_weights.astype(np.float32))
-        weights_writer.close()
-
-        read_weights = np.fromfile(log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin", dtype=np.float32, count=-1, sep='', offset=0).astype(np.float32)
-
-        label_writer = open((log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin"), "wb")
-        label_writer.write(labels.astype(np.uint8))
-        label_writer.close()
-
-        read_labels = np.fromfile(log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin",
-                                   dtype=np.uint8, count=-1, sep='', offset=0).astype(np.float32)
+        # save encoded weights (labels) to .bin file and read from it
+        # weights_writer = open((log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin"), "wb")
+        # model_weights = model.decoder.input_layer.weight.detach().numpy()
+        # weights_writer.write(model_weights.astype(np.float32))
+        # weights_writer.close()
+        #
+        # read_weights = np.fromfile(log_dir + scenario_name + "-" + 'TEST_weights' + "-" + date_time + ".bin",
+        #                            dtype=np.float32, count=-1, sep='', offset=0).astype(np.float32)
+        #
+        # label_writer = open((log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin"), "wb")
+        # label_writer.write(labels.astype(np.uint8))
+        # label_writer.close()
+        #
+        # read_labels = np.fromfile(log_dir + scenario_name + "-" + 'TEST_labels' + "-" + date_time + ".bin",
+        #                           dtype=np.uint8, count=-1, sep='', offset=0).astype(np.float32)
 
         bp = 0
-        new_model = AE(input_size, feature_size)
-        new_model.encoder = model.get_encoder()
+        model_v2 = AE(input_size, feature_size)
+        model_v2.encoder = model.get_encoder()
         # new_model.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(read_labels.reshape(model.decoder.input_layer.weight.shape)))
 
-        read_labels = read_labels.reshape(-1, 1)
-        # reassign labels to their center value
-        for cluster in range(n_clusters):
-            t1 = np.float32(read_labels == cluster).reshape(-1, 1)
-            t2 = 1 - t1
-
-            read_labels = read_labels * t2
-            t1 = t1 * centers[cluster]
-            read_labels += t1
-
-        read_labels = read_labels.astype(np.float32)
-        read_labels = nn.Parameter(torch.from_numpy(read_labels.reshape(model.decoder.input_layer.weight.shape)))
-        new_model.decoder.input_layer.weight = read_labels
-
-        bp = 0
-
-        new_outputs = new_model(X)
+        # read_labels = read_labels.reshape(-1, 1)
+        # converted_weights = assign_weights(read_labels, centers)
+        #
+        # converted_weights = converted_weights.astype(np.float32)
+        # converted_weights = nn.Parameter(
+        #     torch.from_numpy(converted_weights.reshape(model.decoder.input_layer.weight.shape)))
+        # model_v2.decoder.input_layer.weight = converted_weights
+        #
+        new_outputs = model_v2(X)
 
         print(f'Reconstruction Loss: {criterion(new_outputs, X).item()}')
 
-        X = np.array(range(0, n_clusters)).reshape(-1, 1)
+        X_ = np.array(range(0, n_clusters)).reshape(-1, 1)
         y = np.sort(centers, axis=0)
-        degree = 5
 
-        for degree in [3, 5, 10, 15, 40]:
-            # linear regression
-            lin_reg = LinearRegression().fit(X, y)
-            poly_reg = PolynomialFeatures(degree=degree)
+        t = np.sort(centers, axis=0)
+        idx = centers.argsort(axis=0)
 
-            # polynomial regression
-            X_poly = poly_reg.fit_transform(X)
-            poly_reg = LinearRegression().fit(X_poly, y)
+        print((centers[idx.reshape(n_clusters, )] == t).sum())
 
-            plt.figure()
-            plt.scatter(X, y, color='red')
-            plt.plot(X, lin_reg.predict(X), color='blue')
-            plt.plot(X, poly_reg.predict(X_poly), color='blue')
-            plt.title(f'Linear & Polynomial Regression (degree: {degree})')
-            plt.xlabel('Label')
-            plt.ylabel('Weight')
-            plt.show()
-            # plt.savefig(f'linear_poly_regression_ordered_{degree}_nc{n_clusters}_idx{idx}')
-            plt.close()
+        a = find_discontinuity_points(y, n_clusters=n_clusters)
+        temp = get_ranges(a, last_idx=1023)
+        models = get_models(X_, y, temp, degree=degree)
 
-            _, count = count_freq(labels, max=n_clusters)
+        sorted_labels = sort_labels(labels, idx.reshape(n_clusters, ))
+        print(f'Min test: {centers[idx[0]].item() == centers.min()}')
+        print(f'Max test: {centers[idx[-1]].item() == centers.max()}')
 
-            plt.figure()
-            plt.hist(labels, bins=n_clusters)
-            plt.xlabel('Label')
-            plt.show()
-            # plt.savefig(f'hist_nc{n_clusters}_idx{idx}')
-            plt.close()
+        # testing the labels and models ability
+        # TODO: convert below to work with polynomial features, if degree exists then create features
+        # rand_idx = int(np.floor(r * 1024))
+        # test_idx = search_range(labels[rand_idx], temp)
+        # print(models[test_idx].coef_ * labels[rand_idx] + models[test_idx].intercept_)
+        # print(f'Original value: {y[labels[rand_idx]]}')
 
-        # remove_label(labels, centers)
+        # use models to replace all weights
+        holder = np.copy(labels).astype(np.float32)
+        for i, label in enumerate(labels):
+            j = search_range(label, temp)
+            # holder[i] = models[j].coef_ * label + models[j].intercept_
+            poly = PolynomialFeatures(degree=degree)
+            features = poly.fit_transform(np.int32(label).reshape(-1, 1))
+            holder[i] = models[j].predict(features)
 
-        print(stats.describe(count))
-        df_describe = pd.DataFrame(count)
-        print(df_describe.describe())
+        model_v2.unfreeze_decoder()
+        original_weights = model_v2.decoder.input_layer.weight.data
+        shape = original_weights.numpy().shape
+        model_v2.decoder.input_layer.weight.data = nn.Parameter(torch.from_numpy(holder.reshape(shape)))
+        model_v2.freeze_decoder()
 
-        # lin_reg.score(lin_reg.predict(X), y)
-        # t =  np.dot(poly_reg.coef_, X_poly[2].reshape(-1,1))
+        outputs = model_v2(X)
+        train_loss = criterion(outputs, X).item()
+        print(f'[Model_v2 LOSS]: {train_loss}')
+
+        d1 = model.decoder.input_layer.weight.data
+        d2 = model_v2.decoder.input_layer.weight.data
+        x_t = np.array(range(d1.size()[0]))
+
+        plt.figure()
+        plt.scatter(x_t, d1, color='red', label='original')
+        plt.scatter(x_t, d2, color='blue', label='new')
+        plt.plot(x_t, d1, color='red')
+        plt.plot(x_t, d2, color='blue')
+        plt.legend()
+        plt.show()
 
         bp = 0
 
 
-    bp = 0
-
+bp = 0
