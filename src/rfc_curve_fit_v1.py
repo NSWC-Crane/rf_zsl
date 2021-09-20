@@ -104,6 +104,8 @@ if __name__ == '__main__':
     # step 1: load the data
     print("Loading data...\n")
 
+    # base_name = "lfm_test"
+    # base_name = "rand_test"
     base_name = "sdr_test"
     iq_data = np.fromfile("../data/" + base_name + "_10M_100m_0001.bin", dtype=np.int16, count=-1, sep='', offset=0).astype(np.float32)
 
@@ -130,16 +132,16 @@ if __name__ == '__main__':
 
     print("Processing...\n")
     sine_size = 3
-    io_size_list = 2**np.arange(12, 6, -1)
+    io_size_list = 2**np.arange(10, 5, -1)
 
     # index into the data file
-    file_index = 50000
+    file_index = 0
 
     # counter for the number of bytes used to compress files
     comp_bytes = 0
 
     # r-squared fit value that is considered good
-    r2_fit = 0.999
+    r2_fit = 0.99
 
     barLength = 20
 
@@ -175,7 +177,7 @@ if __name__ == '__main__':
 
                 if r2 > r2_fit:
                     # increment the compression byte counter: number of coefficients * size of float
-                    comp_bytes += (sine_size * 3) * 4
+                    comp_bytes += (sine_size * 3) * 4 + 1
 
                     #increment the file_counter
                     file_index += y_data.size
@@ -199,7 +201,7 @@ if __name__ == '__main__':
                     y_hat = y_data
 
                     # increment the compression byte counter
-                    comp_bytes += y_data.size * 2
+                    comp_bytes += y_data.size * 2 + 1
 
                     # increment the file_counter
                     file_index += y_data.size
@@ -226,7 +228,7 @@ if __name__ == '__main__':
                     y_hat = y_data
 
                     # increment the compression byte counter
-                    comp_bytes += y_data.size * 2
+                    comp_bytes += y_data.size * 2 + 1
 
                     # increment the file_counter
                     file_index += y_data.size
@@ -250,7 +252,7 @@ if __name__ == '__main__':
 
         progress = file_index/iq_data.size
         block = int(round(barLength * progress))
-        text = "\rPercent: [{:}] {:5.3f}%".format("#" * block + "-" * (barLength - block), progress * 100)
+        text = "\rPercent: [{:}] {:5.3f}%, ratio = {:0.6f}".format("#" * block + "-" * (barLength - block), progress * 100, 1-comp_bytes/(file_index*2))
         print(text, end='')
 
     test_writer.close()

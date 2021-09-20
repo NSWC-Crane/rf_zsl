@@ -16,8 +16,8 @@ commandwindow;
 %% load in the data
 byte_order = 'ieee-le';
 data_type = 'int16';
-filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0001.bin');
-% filename = strcat(scriptpath, '/../data/rand_test_10M_100m_0000.bin');
+% filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0000.bin');
+filename = strcat(scriptpath, '/../data/rand_test_10M_100m_0000.bin');
 % filename = strcat(scriptpath, '/../data/lfm_test_10M_100m_0002.bin');
 % filename = 'E:\data\zsl\VH1-164.sigmf-data.bin';
 
@@ -29,9 +29,9 @@ iq_int = iq(:);
 
 %% try curve fitting
 
-iq_start = 50001; 
+iq_start = 70000; 
 %iq_start = 679410;
-io_size = 4096;
+io_size = 128;
 sine_size = 3;
 
 iq_slice = iq_int(iq_start:io_size+iq_start-1);
@@ -40,37 +40,9 @@ y_imag = iq_slice(2:2:end);
 x_data = (0:1:io_size-1)';
 cx = (0:1:length(y_real)-1)';
 
-% % try to get a guess on the starting values
-% fy_real = fft(y_real);
-% fy_imag = fft(y_imag);
-% 
-% start_a = ones(3*sine_size, 1);
-% start_r = ones(3*sine_size, 1);
-% start_i = ones(3*sine_size, 1);
-% 
-% for idx=1:sine_size
-%     
-%     start_r(3*idx-2, 1) = mean(abs(y_real))/idx;
-%     start_i(3*idx-2, 1) = mean(abs(y_imag))/idx;
-%     
-%     [mv, ml] = max(fy_real(1:floor(io_size/2)));
-%     start_r(3*idx-1, 1) = 2*pi*(max(0.5, ml-1))/(cx(end)-cx(1));
-%     fy_real(ml) = 0;
-%     
-%     [mv, ml] = max(fy_imag(1:floor(io_size/2)));
-%     start_r(3*idx-1, 1) = 2*pi*(max(0.5, ml-1))/(cx(end)-cx(1));
-%     fy_imag(ml) = 0;
-%     
-%     start(3*idx, 1) = 1.0;
-% end
-
 start_a = get_ssin_start(sine_size, x_data, iq_slice);
 start_r = get_ssin_start(sine_size, cx, y_real);
 start_i = get_ssin_start(sine_size, cx, y_imag);
-
-% start(2) = io_size;
-% start(5) = io_size/2;
-% start(8) = io_size/3;
 
 %% run the fit
 [cf_a, cf_a_metrics] = fit(x_data, iq_slice, strcat('sin', num2str(sine_size)), 'StartPoint', start_a);
@@ -214,7 +186,7 @@ function [y0] = get_ssin_start(sine_size, x_data, y_data)
 %         ab = np.matmul(np.linalg.pinv(x0[:, 0:2 * jdx+2]), y_data).reshape(-1)
         ab = pinv(x0(:, 1:2 * jdx+2)) * y_data;
 
-        y0(3 * jdx + 1) = sqrt(ab(2*jdx+1)*ab(2*jdx+1) + ab(2*jdx+2)*ab(2*jdx+2));
+        y0(3 * jdx + 1) = 1.05*sqrt(ab(2*jdx+1)*ab(2*jdx+1) + ab(2*jdx+2)*ab(2*jdx+2));
         y0(3 * jdx + 3) = atan2(ab(2*jdx+2), ab(2*jdx+1));
 
     end
