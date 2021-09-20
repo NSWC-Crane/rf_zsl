@@ -137,7 +137,7 @@ if __name__ == '__main__':
     # model.train()
     lr_shift = 1.0
 
-    for n_clusters in [100, 100]:
+    for n_clusters in [128, 128]:
         if read_data == True:
             x = np.fromfile("../data/" + data_file + ".bin", dtype=np.int16, count=-1, sep='',
                             offset=0).astype(np.float32)
@@ -333,7 +333,7 @@ if __name__ == '__main__':
 
         # use models to replace all weights
         holder = np.copy(labels).astype(np.float32)
-        for i, label in enumerate(labels):
+        for i, label in enumerate(sorted_labels):
             j = search_range(label, temp)
             # holder[i] = models[j].coef_ * label + models[j].intercept_
             poly = PolynomialFeatures(degree=degree)

@@ -57,8 +57,8 @@ def cluster_weights(model, n_clusters=100, cluster_name='KMeans'):
     print("#-------------------------------------------------------------------------------")
 
     for layer in model.decoder.parameters():
-        data = layer.detach().numpy()
-        data = data.reshape(-1, 1)
+        data = layer.detach().numpy().reshape(-1, 1)
+        # data = data.reshape(-1, 1)
 
         if cluster_name == 'KMeans':
             kmeans = KMeans(n_clusters=n_clusters).fit(data)
@@ -117,4 +117,4 @@ def cluster_weights(model, n_clusters=100, cluster_name='KMeans'):
             layer.data = nn.Parameter(torch.from_numpy(data.reshape(layer.shape)))
             bp = 0
 
-
+    return kmeans.labels_, kmeans.cluster_centers_
