@@ -303,12 +303,13 @@ def plot_data(y, x=None, title='', xlabel='', ylabel='', file_name='', save=Fals
             plt.savefig(f'{date_time}.png')
 
 
-def find_discontinuity_points(data, dx=0.01):
-    dy = diff(data.reshape(100, )) / dx
-    # plt.figure()
-    # plt.scatter(data, color='red')
-    # plt.plot(dy)
-    # plt.title('Sorted weights')
+def find_discontinuity_points(data, n_clusters, dx=0.01):
+    dy = diff(data.reshape(n_clusters, )) / dx
+
+    plt.figure()
+    plt.scatter(np.array(range(np.size(data))), data, color='red')
+    plt.plot(dy)
+    plt.title('Sorted weights')
 
     points = np.argwhere(dy > 1)
     return points.reshape(points.shape[0], )
@@ -493,3 +494,37 @@ class DataFile:
         fh = open((full_path + ".bin"), "wb")
         fh.write(self.data_.astype(self.data_type_))
         fh.close()
+
+
+"""
+plt.figure()
+plt.plot(loss_arr)
+plt.title('Mean Squared Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.show()
+# plt.savefig(f'mse_loss_nc{n_clusters}_idx{idx}')
+plt.close()
+
+plt.figure()
+plt.plot(phase_mean_arr, label='phase mean')
+plt.plot(phase_std_arr, label='phase std')
+plt.title('Phase Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+# plt.savefig(f'phase_loss_nc{n_clusters}_idx{idx}')
+plt.close()
+
+plt.figure()
+plt.plot(dist_mean_arr, label='dist mean')
+plt.plot(dist_std_arr, label='dist std')
+plt.title('Dist. Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+# plt.savefig(f'dist_loss_nc{n_clusters}_idx{idx}')
+plt.close()
+"""
