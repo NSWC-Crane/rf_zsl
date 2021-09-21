@@ -16,8 +16,8 @@ commandwindow;
 %% load in the data
 byte_order = 'ieee-le';
 data_type = 'int16';
-% filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0000.bin');
-filename = strcat(scriptpath, '/../data/rand_test_10M_100m_0000.bin');
+filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0000.bin');
+% filename = strcat(scriptpath, '/../data/rand_test_10M_100m_0000.bin');
 % filename = strcat(scriptpath, '/../data/lfm_test_10M_100m_0002.bin');
 % filename = 'E:\data\zsl\VH1-164.sigmf-data.bin';
 
@@ -32,7 +32,7 @@ iq_int = iq(:);
 iq_start = 70000; 
 %iq_start = 679410;
 io_size = 128;
-sine_size = 3;
+sine_size = 8;
 
 iq_slice = iq_int(iq_start:io_size+iq_start-1);
 y_real = iq_slice(1:2:end);
@@ -172,13 +172,18 @@ function [y0] = get_ssin_start(sine_size, x_data, y_data)
     y0 = ones(sine_size * 3, 1);
     x0 = zeros(io_size, 2 * sine_size);
 
-    fy = fft(y_data);
+    peaks = [];
+    res = y_data;
     
     for jdx=0:sine_size-1
+        fy = fft(res);
+        fy(peaks) = 0;
+        
         [~, ml] = max(fy(1:floor(io_size/2)));
+        peaks(end+1) = ml;
 %         ml = ml + 1;
+
         y0(3 * jdx + 2) = (2 * pi() * (max(0.5, (ml-1))) / (x_data(end) - x_data(1)));
-        fy(ml) = 0;
 
         x0(:, 2 * jdx + 1) = sin(y0(3 * jdx + 2) * x_data);
         x0(:, 2 * jdx + 2) = cos(y0(3 * jdx + 2) * x_data);
@@ -186,8 +191,10 @@ function [y0] = get_ssin_start(sine_size, x_data, y_data)
 %         ab = np.matmul(np.linalg.pinv(x0[:, 0:2 * jdx+2]), y_data).reshape(-1)
         ab = pinv(x0(:, 1:2 * jdx+2)) * y_data;
 
-        y0(3 * jdx + 1) = 1.05*sqrt(ab(2*jdx+1)*ab(2*jdx+1) + ab(2*jdx+2)*ab(2*jdx+2));
+        y0(3 * jdx + 1) = sqrt(ab(2*jdx+1)*ab(2*jdx+1) + ab(2*jdx+2)*ab(2*jdx+2));
         y0(3 * jdx + 3) = atan2(ab(2*jdx+2), ab(2*jdx+1));
+        
+        res = y_data - x0(:, 1:2 * jdx+2)*ab;
 
     end
 end
