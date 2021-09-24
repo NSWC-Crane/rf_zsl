@@ -33,10 +33,11 @@ from zsl_decoder_v1 import Decoder, Encoder, AE
 from zsl_error_metric import zsl_error_metric
 
 ###torch.manual_seed(42)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-torch.set_printoptions(precision=10)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
+# torch.set_printoptions(precision=10)
 
+function_terms = 5
 
 def r_squared(x, y):
     y_m = np.mean(y)
@@ -65,16 +66,32 @@ def sum_sine_8(x, a1, b1, c1, a2, b2, c2, a3, b3, c3, a4, b4, c4, a5, b5, c5, a6
     return a1*np.sin(b1*x+c1) + a2*np.sin(b2*x+c2) + a3*np.sin(b3*x+c3) + a4*np.sin(b4*x+c4) + a5*np.sin(b5*x+c5) + a6*np.sin(b6*x+c6) + a7*np.sin(b7*x+c7) + a8*np.sin(b8*x+c8)
 
 
+def sum_sine(x, *p):
+    s = 0
+    for idx in range(0, function_terms):
+        s += p[3*idx] * np.sin(p[3*idx+1]*x + p[3*idx+2])
 
-def get_ssin_start(sine_size, x_data, y_data):
-    y0 = np.ones([sine_size * 3], dtype=np.float32)
-    x0 = np.zeros([y_data.size, 2 * sine_size], dtype=np.float32)
+    return s
+
+def sum_fourier(x, *p):
+    s = p[0]
+    w = p[function_terms-1]
+
+    for idx in range(1, function_terms-1):
+        s += p[2*idx+1] * np.cos((idx+1)*w*x) + p[2*idx+2]*np.sin((idx+1)*w*x)
+
+    return s
+
+
+def get_ssin_start(n, x_data, y_data):
+    y0 = np.ones([n * 3], dtype=np.float32)
+    x0 = np.zeros([y_data.size, 2 * n], dtype=np.float32)
 
     peaks = []
 
     res = y_data
 
-    for jdx in range(0, sine_size, 1):
+    for jdx in range(0, n, 1):
         fy = np.fft.fft(res)
         fy[peaks] = 0
 
@@ -91,7 +108,7 @@ def get_ssin_start(sine_size, x_data, y_data):
         y0[3 * jdx] = math.sqrt(ab[2*jdx]*ab[2*jdx] + ab[2*jdx+1]*ab[2*jdx+1])
         y0[3 * jdx + 2] = math.atan2(ab[2*jdx+1], ab[2*jdx])
 
-        if jdx < sine_size-1:
+        if jdx < (n-1):
             res = y_data - np.matmul(x0[:, 0:2 * jdx+2], ab)
 
     return y0
@@ -145,11 +162,13 @@ if __name__ == '__main__':
     zip_data = open((log_dir + base_name + "_comp_" + date_time + ".zsl"), "wb")
 
     print("Processing...\n")
-    sine_size = 3
-    min_exp = math.ceil(math.log10(sine_size*3*4)/math.log10(2))
-    max_exp = max(11, min_exp)
-    # io_size_list = 2**np.arange(max_exp, min_exp-1, -1)
-    io_size_list = 2**np.arange(max_exp, max_exp-1, -1)
+    min_exp = math.ceil(math.log10(function_terms*3*4)/math.log10(2))+1
+    max_exp = max(7, min_exp)
+    io_size_list = 2**np.arange(max_exp, min_exp-1, -1)
+    # io_size_list = 2**np.arange(max_exp, max_exp-1, -1)
+
+    print("Function terms: {:}\nmin exp: {:}\nmax exp: {:}\nio list: {:}\n".format(function_terms, min_exp, max_exp, io_size_list))
+    data_wr.write("# Function terms: {:}\n# min exp: {:}\n# max exp: {:}\n# io list: {:}\n".format(function_terms, min_exp, max_exp, io_size_list))
 
     # index into the data file
     file_index = 0
@@ -162,7 +181,7 @@ if __name__ == '__main__':
 
     barLength = 20
 
-    bounds = ([-np.inf, 0, -np.inf]*sine_size, np.inf)
+    bounds = ([-np.inf, 0, -np.inf]*function_terms, np.inf)
 
     # loop that runs through the data file in io_size_list[...] increments
     # TODO
@@ -184,19 +203,19 @@ if __name__ == '__main__':
 
             try:
                 # create initial guess based on frequency content
-                y0 = get_ssin_start(sine_size, x_data, y_data)
+                y0 = get_ssin_start(function_terms, x_data, y_data)
 
                 # run the fit based on the data chunk and the initial guess
-                fit_values, fit_cov = curve_fit(f=sum_sine_3, xdata=x_data, ydata=y_data, p0=y0, method='trf', bounds=bounds)
+                fit_values, fit_cov = curve_fit(f=sum_sine, xdata=x_data, ydata=y_data, p0=y0, method='trf', bounds=bounds)
 
                 # get the reconstructed values based on the fit values
-                y_hat = sum_sine_3(x_data, *fit_values)
+                y_hat = sum_sine(x_data, *fit_values)
                 y_hat = np.floor(y_hat + 0.5)
                 r2 = r2_score(y_data, y_hat)
 
                 if r2 > r2_fit:
                     # increment the compression byte counter: number of coefficients * size of float
-                    comp_bytes += (sine_size * 3) * 4 + 1
+                    comp_bytes += (function_terms * 3) * 4 + 1
 
                     #increment the file_counter
                     file_index += y_data.size
