@@ -16,9 +16,9 @@ commandwindow;
 %% load in the data
 byte_order = 'ieee-le';
 data_type = 'int16';
-filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0000.bin');
+% filename = strcat(scriptpath, '/../data/sdr_test_10M_100m_0000.bin');
 % filename = strcat(scriptpath, '/../data/rand_test_10M_100m_0000.bin');
-% filename = strcat(scriptpath, '/../data/lfm_test_10M_100m_0002.bin');
+filename = strcat(scriptpath, '/../data/lfm_test_10M_100m_0001.bin');
 % filename = 'E:\data\zsl\VH1-164.sigmf-data.bin';
 
 [iq, iqc, i_data, q_data] = read_binary_iq_data(filename, data_type, byte_order);
@@ -31,8 +31,8 @@ iq_int = iq(:);
 
 iq_start = 70000; 
 %iq_start = 679410;
-io_size = 128;
-sine_size = 8;
+io_size = 512;
+sine_size = 4;
 
 iq_slice = iq_int(iq_start:io_size+iq_start-1);
 y_real = iq_slice(1:2:end);
@@ -72,7 +72,7 @@ disp(cf_i_metrics);
 
 % calculate the ratio (num coeff / iosize) * (coeff bits / data bits)
 ratio = 2*(numel(coeffvalues(cf_r))/io_size)*(32/16);
-fprintf('\nRatio: %10.6f\n', ratio);
+fprintf('\nRatio: %10.6f\n', 1-ratio);
 
 y_hat = cat(1, yr_hat.', yi_hat.');
 y_hat = y_hat(:);
